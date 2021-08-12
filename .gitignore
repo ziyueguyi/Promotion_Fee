@@ -1,7 +1,8 @@
 /venv/
+*/nacos-data/
 /nacos-data/
 *.xlsx
 *.xls
 .idea
-
-./tool
+/tool/
+/funtions/tool/
