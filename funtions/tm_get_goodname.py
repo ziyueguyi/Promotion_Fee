@@ -49,7 +49,7 @@ class g_sn:
                         print(self.base_url + str(i))
                         await page.goto(self.base_url + str(i),
                                         {'timeout': 1000 * 20})
-                        await asyncio.sleep(random.randint(2,4))
+                        await asyncio.sleep(random.randint(2, 4))
                         await page.evaluateOnNewDocument(
                             '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
                         good_name = await page.Jx('//*[@id="J_DetailMeta"]/div[1]/div[1]/div/div[1]/h1/a')
@@ -89,8 +89,8 @@ class g_sn:
         s_sql = "SELECT sku_id,sku_cost,sku_code,sku_type,shop_name,create_time,goods_name FROM `tm_ztc_sku_none` WHERE sku_code IS NULL OR sku_code=''"
         data = self.dc.bing_mysql(s_sql)
         if data:
-            data = pd.DataFrame(data, columns=['商品id', '花费', '商品sku', '花费类型', '店铺名称', '时间', '商品名称'])
-            data.to_excel(filename)
+            data = pd.DataFrame(data, columns=['商品编号', '花费', '商品sku', '推广费类型', '店铺名称', '日期', '商品名称'])
+            data.to_excel(filename, index_label=False, index=False)
 
     def tgg_run(self, filename):
         asyncio.get_event_loop().run_until_complete(self.main())
