@@ -101,7 +101,6 @@ class deal_none:
             return filed
 
     def tj_sku(self, data):
-
         old_shop = data['店铺名称']
         try:
             data['店铺名称'] = self.split_(data['店铺名称'])
@@ -127,7 +126,6 @@ class deal_none:
                               """.format(self.type_db[0], self.db_columns[self.type_db[0]][1], data['商品sku'],
                                          ','.join([i for i in self.db_columns[self.type_db[0]]]),
                                          str(tuple(new_data)), self.type_db[2])
-                    print(i_sql)
                     self.dc.bing_mysql(i_sql)
                 except BaseException as e:
                     print(e)
@@ -183,7 +181,6 @@ class deal_none:
         """.format(self.type_db[3], str(tuple([i[0] for i in data.keys()])).replace("'", ""),
                    str(tuple([i for i in data])), self.type_db[2],
                    *data[['goods_id', 'goods_no']], sku_type, old_shop_name)
-        print(i_sql)
         self.dc.bing_mysql(i_sql)
 
     def run(self):
@@ -199,6 +196,6 @@ class deal_none:
 
 if __name__ == '__main__':
     # flag True代表京东，False代表天猫
-    flag = True
+    flag = False
     dn = deal_none(flag)
     dn.run()
