@@ -50,11 +50,11 @@ class deal_none:
             try:
                 data.dropna(axis=1, inplace=True)
                 data = data[self.columns]
-                data['商品sku'] = data['商品sku'].str.strip()
+                data['商品sku'] = data['商品sku'].str.strip().apply(lambda x:x[:18])
                 data['店铺名称'] = data['店铺名称'].str.strip()
                 data[self.columns[3]] = data[self.columns[3]].str.strip()
                 data = data[data['商品sku'].str.len() >= 18]
-                data.drop_duplicates(subset=['商品sku', '店铺名称'], keep='first', inplace=True)
+                # data.drop_duplicates(subset=['商品sku', '店铺名称'], keep='first', inplace=True)
             except BaseException as e:
                 print(e)
             finally:
@@ -88,7 +88,7 @@ class deal_none:
                 print(e)
                 return False
         else:
-            return False
+            return True
 
     @staticmethod
     def split_(filed):
@@ -123,7 +123,7 @@ class deal_none:
                     new_data.append(dt.now().strftime('%Y-%m-%d %H:%M:%S'))
                     i_sql = """DELETE FROM {0} WHERE {1} = "{2}";      
                                INSERT INTO {0} ({3})VALUES {4} 
-                              """.format(self.type_db[0], self.db_columns[self.type_db[0]][1], data['商品sku'],
+                              """.format(self.type_db[0], self.db_columns[self.type_db[0]][0], data['商品编号'],
                                          ','.join([i for i in self.db_columns[self.type_db[0]]]),
                                          str(tuple(new_data)), self.type_db[2])
                     self.dc.bing_mysql(i_sql)
@@ -196,6 +196,6 @@ class deal_none:
 
 if __name__ == '__main__':
     # flag True代表京东，False代表天猫
-    flag = False
+    flag = True
     dn = deal_none(flag)
     dn.run()

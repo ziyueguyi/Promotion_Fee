@@ -256,7 +256,7 @@ def g_sku_non(fn):
     :param fn:
     :return:
     """
-    s_sql = """select sku_id,sku_cost,sku_code,sku_type,create_date,shop_name,user_name from jd_ztc_cost_none"""
+    s_sql = """select sku_id,sku_cost,sku_code,sku_type,shop_name,create_date,user_name from jd_ztc_cost_none"""
     data = mso.bing_mysql(s_sql, db_type='pro', tip=False)
     if data:
         data = pd.DataFrame(data, columns=['商品编号', '花费', '商品sku', '推广费类型', '店铺名称', '日期', '责任人'])
