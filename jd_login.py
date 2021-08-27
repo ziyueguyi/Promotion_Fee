@@ -22,6 +22,7 @@ import multiprocessing
 
 from urllib import request
 
+from colorama import Fore, Style
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from pyppeteer import launch
@@ -48,7 +49,9 @@ async def main(un, pw, sn):
                  '--window-size={0},{1}'.format(width, height),
                  ],
     })
+    statue = None
     page = await browser.newPage()
+    shop_name = Fore.LIGHTGREEN_EX + '{0}'.format(sn) + Style.RESET_ALL
     try:
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4542.2 Safari/537.36')
@@ -76,18 +79,21 @@ async def main(un, pw, sn):
         time.sleep(random.randint(3, 6))
         cookies = await page.cookies()
         path = r'./tool/datas/{0}/cookies/{1}_{2}.json'.format(sn, 'jd', sn)
-        print('获取cookies：{0}'.format(sn))
+
+        statue = Fore.LIGHTBLUE_EX + "cookies获取成功" + Style.RESET_ALL
         try:
             funtion.jud_path(path, flag=False)
             with open(path, 'w') as f:
                 json.dump(cookies, f)
         except BaseException as e:
-            raise ('cookies获取失败', e.args)
+            statue = Fore.LIGHTRED_EX_EX+"cookies获取失败"+Style.RESET_ALL
+            ''.format(e)
         await page.waitFor(5000)
     except BaseException as e:
         print(e)
-        raise ('浏览器模拟失败', e.args)
+        statue = Fore.LIGHTRED_EX_EX + "浏览器模拟失败" + Style.RESET_ALL
     finally:
+        print('{0}:{1}'.format(shop_name, statue))
         await page.close()
         await browser.close()
 
@@ -279,21 +285,14 @@ def run(num=5, flag=True, shop_name=None):
     db = mso.DC(db_type='pro')
     s_sql = 'select user_name,pwd,shop_name,name from jd_jzt_user where use_off="1" and shop_type = 1'
     jd_user = db.bing_mysql(s_sql)
-    mgr = list()
-    if jd_user:
-        if flag:
-            mgr = multiprocessing.Manager().list()
-            pool = multiprocessing.Pool(processes=num)
-            [pool.apply_async(r_fun, (*i, jc, mgr)) for i in jd_user]  # 将账号放入线程池，等待数据获取，默认限制五个线程
-            pool.close()
-            pool.join()
-        elif shop_name:
-            for ju in jd_user:
-                if ju[2] in shop_name:
-                    r_fun(*ju, jc, mgr)
-                    break
-        else:
-            print('请填写店铺')
+    shop_name = [i for i in jd_user if not shop_name or i[2] in shop_name]
+    print([sn[2] for sn in shop_name])
+    if shop_name:
+        mgr = multiprocessing.Manager().list()
+        pool = multiprocessing.Pool(processes=num)
+        [pool.apply_async(r_fun, (*i, jc, mgr)) for i in shop_name]  # 将账号放入线程池，等待数据获取，默认限制五个线程
+        pool.close()
+        pool.join()
         send_file(route, jc, mgr, jd_user)
     else:
         send.send_msg('没有查询到可用账号')
@@ -368,10 +367,10 @@ def main_run(flag=True):
     run(flag=flag, shop_name=one_start)
 
 
-def test():
-    fn = './tool/2021/7/30/京东.xlsx'
-    c = [['JD-水星家纺尊实专卖店_1', 'tt', 1, 2, 3, 0]]
-    g_sql(fn, c)
+# def test():
+#     fn = './tool/2021/7/30/京东.xlsx'
+#     c = [['JD-水星家纺尊实专卖店_1', 'tt', 1, 2, 3, 0]]
+#     g_sql(fn, c)
 
 
 if __name__ == '__main__':
@@ -379,7 +378,7 @@ if __name__ == '__main__':
     # exit()
     print('程序启动')
     # 单次执行
-    # main_run(flag=True)
+    main_run(flag=True)
     # 定时运行
     bs = BlockingScheduler()
     bs.add_job(main_run, 'cron', hour=8, minute=0, misfire_grace_time=1000 * 90)

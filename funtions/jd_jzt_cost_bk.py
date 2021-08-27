@@ -17,6 +17,7 @@ import pandas as pd
 from retrying import retry
 from base_fun import mso, funtion
 from datetime import timedelta, datetime
+from colorama import Fore, Style
 
 """
 京东精准通费用获取,添加当天备份功能，可用于查询id出自哪个店铺
@@ -259,7 +260,7 @@ class JztCost(object):
         for i in datas:
             if i['status'] == 2 and i['reportName'] == reportName:
                 reportName = i['reportName']
-                print('down-file:{0}>{1}'.format(shop_name, reportName))
+                # print('down-file:{0}>{1}'.format(shop_name, reportName))
                 url = i['downloadUrl']
                 self.down_file(url, reportName, cost_money, db_name, shop_name, name, end_day)
 
@@ -335,8 +336,6 @@ class JztCost(object):
             df3 = df3[df3.sku_cost != 0]
             df3 = df3.copy()
             df3['sku_code'] = df3.sku_id.apply(self.get_sku_code)  # 获取商品sku
-            # df3.sku_code.fillna(method='bfill', inplace=True)  # bfill:向前填充
-            # df3.sku_code.fillna(method='ffill', inplace=True)  # bfill:向后填充
             df3['create_date'] = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d')
             df3['create_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sum_cost = np.around(df3.sku_cost.sum(), 2)
@@ -348,7 +347,8 @@ class JztCost(object):
                 if less_df > 0.0:
                     df3.loc[df3.shape[0] - 1, 'sku_cost'] += round(less_df, 2)
             except Exception as e:
-                print('error:', e, round(less_df, 2))
+                ''.format(e)
+                # print('error:', e, round(less_df, 2))
 
             df3['sku_cost'] = np.around(df3.sku_cost, 2)
             df3['sum_cost'] = np.around(df3.sku_cost.sum(), 2)
@@ -404,17 +404,6 @@ class JztCost(object):
                 conn.rollback()
         cursor.close()
         conn.close()
-
-    # def get_kc(self, time_day, shop_name):
-    #     """
-    #     快车推广计划报表
-    #     :param time_day:
-    #     :param shop_name:
-    #     :return:
-    #     """
-    #     url = 'https://jzt-api.jd.com/kuaiche/report/account/campaign'
-    #     sec_kill_cost, sum_cost = self.get_kill_cost(url, time_day, shop_name)
-    #     return sec_kill_cost, sum_cost
 
     def touch_point(self, time_day, shop_name):
         """
@@ -489,7 +478,6 @@ class JztCost(object):
             except Exception as e:
                 print(8, e)
                 conn.rollback()
-
         cursor.close()
         conn.close()
 
@@ -505,32 +493,49 @@ class JztCost(object):
         # 获取总计金额
         sum_cost = self.get_cost(start_day, end_day, shop_name)
         pfd_list = [shop_name, name]
+        sn = Fore.LIGHTGREEN_EX + '{0}'.format(shop_name) + Style.RESET_ALL
         if math.ceil(float(sum_cost['京东汇总'])) > 0:
             # 快车
-            if math.ceil(float(sum_cost['京东快车'])) > 0:
-                print('{0}({1}):{2}'.format(shop_name, '京东快车', sum_cost['京东快车']))
+            sku_type_kc = '京东快车'
+            if math.ceil(float(sum_cost[sku_type_kc])) > 0:
                 reportName = self.add_kc_file_name(start_day, end_day, shop_name)
                 data = {"page": 1, "pageSize": 10, "type": 1, "requestFrom": 0}
-                db_name = 'kc'
-                self.get_file(reportName, data, sum_cost['京东快车'], db_name, shop_name, name, end_day)
+                self.get_file(reportName, data, sum_cost[sku_type_kc], 'kc', shop_name, name, end_day)
+                sku_type = Fore.LIGHTBLUE_EX + sku_type_kc + Style.RESET_ALL
+            else:
+                sku_type = Fore.LIGHTRED_EX + sku_type_kc + Style.RESET_ALL
+            print('{0}({1}):{2}'.format(sn, sku_type, sum_cost[sku_type_kc]))
+
             # 触点
-            if math.ceil(float(sum_cost['京东触点'])) > 0:
-                print('{0}({1}):{2}'.format(shop_name, '京东触点', sum_cost['京东触点']))
+            sku_type_cd = '京东触点'
+            if math.ceil(float(sum_cost[sku_type_cd])) > 0:
                 report_name = self.add_file_name(start_day, end_day, shop_name)
                 data_cd = {"page": 1, "pageSize": 10, "type": 3, "requestFrom": 0}
-                db_name1 = 'tp'
-                self.get_file(report_name, data_cd, sum_cost['京东触点'], db_name1, shop_name, name, end_day)
+                self.get_file(report_name, data_cd, sum_cost[sku_type_cd], 'tp', shop_name, name, end_day)
+                sku_type = Fore.LIGHTBLUE_EX + sku_type_cd + Style.RESET_ALL
+            else:
+                sku_type = Fore.LIGHTRED_EX + sku_type_cd + Style.RESET_ALL
+            print('{0}({1}):{2}'.format(sn, sku_type, sum_cost[sku_type_cd]))
+
             # 海投
-            if math.ceil(float(sum_cost['京东海投'])) > 0:
-                db_name2 = 'ht'
-                print('{0}({1}):{2}'.format(shop_name, '京东海投', sum_cost['京东海投']))
-                self.add_ht_list(shop_name, start_day, db_name2, name, end_day)
-            r_amount = round(sum_cost['京东汇总'] - sum_cost['京东快车'] - sum_cost['京东触点'] - sum_cost['京东海投'], 2)
+            sku_type_ht = '京东海投'
+            if math.ceil(float(sum_cost[sku_type_ht])) > 0:
+                self.add_ht_list(shop_name, start_day, 'ht', name, end_day)
+                sku_type = Fore.LIGHTBLUE_EX + sku_type_ht + Style.RESET_ALL
+            else:
+                sku_type = Fore.LIGHTRED_EX + sku_type_ht + Style.RESET_ALL
+            print('{0}({1}):{2}'.format(sn, sku_type, sum_cost[sku_type_ht]))
+            r_amount = round(sum_cost['京东汇总'] - sum_cost[sku_type_kc] - sum_cost[sku_type_cd] - sum_cost[sku_type_ht],
+                             2)
+            sku_type_qt = '其他推广'
             if r_amount:
-                print('{0}({1}):{2}'.format(shop_name, '其他推广', r_amount))
-            pfd_list.extend([float(sum_cost['京东快车']), float(sum_cost['京东海投']), float(sum_cost['京东触点']), r_amount])
+                sku_type = Fore.LIGHTRED_EX + sku_type_qt + Style.RESET_ALL
+            else:
+                sku_type = Fore.LIGHTBLUE_EX + sku_type_qt + Style.RESET_ALL
+            print('{0}({1}):{2}'.format(sn, sku_type, r_amount))
+            pfd_list.extend(
+                [float(sum_cost[sku_type_kc]), float(sum_cost[sku_type_cd]), float(sum_cost[sku_type_ht]), r_amount])
         else:
-            print(shop_name, 'sum_cost:', sum_cost)
             pfd_list.extend([None, None, None, None])
         return pfd_list
 

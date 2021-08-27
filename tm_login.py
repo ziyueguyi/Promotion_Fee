@@ -111,8 +111,28 @@ class TbkDeal:
         file_name = self.get_ztc_cost(token, yesterday_time, cookie, fn)
         if file_name:
             time.sleep(60)
-            self.down_file(token, file_name, cookie, base_route)
+            response = self.ztc_online_download(token, cookie)
+            self.down_file(token, file_name, cookie, base_route, response)
         return sum_cost
+
+    def ztc_online_download(self, token, cookie):
+        """
+        在线文件下载并获取在线文件数据
+        :param token:
+        :param cookie:
+        :return:
+        """
+        url = 'https://subway.simba.taobao.com/reportdownload/getdownloadTasks.htm?pageSize=100&pageNumber=1'
+        item = {
+            "sla": "json",
+            "isAjaxRequest": "true",
+            "token": token,
+            "_referer": '/report/bpreport/download',
+            "sessionId": "d5450ae8-7332-4dc7-8160-18247caad3c8",
+        }
+        data_encode = urllib.parse.urlencode(item)
+        response = self.get_content(url, data_encode, cookie)
+        return response
 
     def start(self, shop_name, cols, time_start, time_end, flag_type=0, flag=True):
         ''.format(time_end)
@@ -127,7 +147,6 @@ class TbkDeal:
         d_year, d_month, d_day = funtion.get_route(start_day.strftime('%Y-%m-%d'))
         base_route = funtion.route_join('./tool', d_year, d_month, d_day)
         funtion.chect_dir(base_route)
-
         file_route_dict = dict()
         if flag_type == 0 or flag_type == 1:
             sum_cost = 0
@@ -396,24 +415,18 @@ class TbkDeal:
         }
         data_encode = urllib.parse.urlencode(item)
         response = self.get_content(url, data_encode, cookie)
+        print(response)
         code = response['code']
         if code == '200':
             return file_name
         else:
             return None
 
-    def down_file(self, token, file_name, cookie, base_route):
+    def down_file(self, token, file_name, cookie, base_route, response):
         time.sleep(5)
-        url = 'https://subway.simba.taobao.com/reportdownload/getdownloadTasks.htm?pageSize=100&pageNumber=1'
-        item = {
-            "sla": "json",
-            "isAjaxRequest": "true",
-            "token": token,
-            "_referer": '/report/bpreport/download',
-            "sessionId": "d5450ae8-7332-4dc7-8160-18247caad3c8",
-        }
-        data_encode = urllib.parse.urlencode(item)
-        response = self.get_content(url, data_encode, cookie)
+
+        print(response)
+        #1304740092
         for i in response['result']['items']:
             file_names = i['fileName']
             if file_name == file_names:
@@ -669,23 +682,27 @@ class TbkDeal:
         sections = config.sections()
         cols = ['goods_id', 'money', 'shop_name', 'sku_type', 'sum_cost', 'total_amount', 'ROI']
         new_pd = pd.DataFrame(columns=cols)
-        if not sn:
-            sn = [i for i in sections]
-        print(sn)
+        # if not sn:
+        # sn = [i for i in sections]
+        sn = [[i, config.get(i, 'user_name'), config.get(i, 'password')] for i in sections if not sn or i in sn]
+        print([i[0] for i in sn])
         dt = time_start.strftime('%Y-%m-%d')
-        for i in sections:
-            shop_name = i
+        for i in sn:
+            # shop_name = i
             try:
-                if shop_name in sn:
-                    user_name = config.get(i, 'user_name')
-                    password = config.get(i, 'password')
-                    # 数据处理
-                    if flag:
-                        self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
-                        print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
-                    else:
-                        print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
-                    new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
+                # if shop_name in sn:
+                # user_name = config.get(i, 'user_name')
+                # password = config.get(i, 'password')
+                shop_name = i[0]
+                user_name = i[1]
+                password = i[2]
+                # 数据处理
+                if flag:
+                    self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+                    print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
+                else:
+                    print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
+                new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
             except BaseException as e:
                 print(e, Fore.LIGHTRED_EX + '{0}:为获取成功'.format(shop_name), Style.RESET_ALL)
         if new_pd.shape[0]:
@@ -716,17 +733,17 @@ class TbkDeal:
         conn = pymysql.connect(**mso.r_sql_opt())  # 有中文要存入数据库的话要加charset='utf8'
         cursor = conn.cursor()  # 创建游标
         yes_date = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d')
-        print(Fore.LIGHTRED_EX + '数据保存开始', Style.RESET_ALL)
+        print(Fore.LIGHTGREEN_EX + '数据保存开始', Style.RESET_ALL)
         if h_data_pd.shape[0]:
             h_data_pd.apply(lambda x: self.save_data('tm_ztc_sku', x, conn, cursor, yes_date), axis=1)
         else:
-            print('一条推广费也没有获取到')
+            print(Fore.LIGHTRED_EX + '一条推广费也没有获取到' + Style.RESET_ALL)
         if h_data_pd.shape[0]:
-            print(n_data_pd, 1)
+            print(h_data_pd.shape)
             n_data_pd.apply(lambda x: self.save_data('tm_ztc_sku_none', x, conn, cursor, yes_date), axis=1)
         else:
-            print('没有一条未计算的推广费')
-        print(Fore.LIGHTRED_EX + '数据保存结束', Style.RESET_ALL)
+            print(Fore.LIGHTRED_EX + '没有一条未计算的推广费' + Style.RESET_ALL)
+        print(Fore.LIGHTGREEN_EX + '数据保存结束', Style.RESET_ALL)
         cursor.close()
         conn.close()
 
@@ -742,18 +759,17 @@ class TbkDeal:
 
 if __name__ == '__main__':
     print('程序启动')
-    #  ft 代表运行那种推广费
-    #  fg 代表是否使用离线的excel报表,Tr
+    #  ft 代表运行那种推广费,0：获取所有，1:代表淘宝客，2：代表直通车，3：代表品牌新享
+    #  fg 代表是否使用离线的excel报表,True 为在线文档 False使用本地的Excel
     #  dr 代表获取的日期范围
 
-    ft = 0
+    ft = 2
     fg = True
     dr = 1
-    sn = []
+    shopname_list = ['科沃斯尊实专卖店']
     td = TbkDeal()
-    # td.get_start(sn=sn, flag_type=ft, flag=fg, data_range=dr)
+    td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 
     scheduler = BlockingScheduler()
     scheduler.add_job(td.get_start, 'cron', hour=7, minute=10, misfire_grace_time=1000 * 90)
     scheduler.start()
-""
