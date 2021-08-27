@@ -112,17 +112,17 @@ class TbkDeal:
         if file_id:
             time.sleep(30)
             nums = 0
-            while nums <= 3:
+            while nums < 3:
                 nums += 1
-                print(Fore.LIGHTRED_EX+"{0}:第{1}尝试".format(shop_name, nums)+Style.RESET_ALL)
                 time.sleep(30)
                 custId = self.ztc_online_download(token, cookie)
                 if not custId:
                     continue
                 self.down_file(cookie, base_route, custId, file_id)
-                file_names = funtion.route_join(base_route, fn)
+                file_names = funtion.route_join(base_route, '{0}.csv'.format(fn))
                 if os.path.exists(file_names):
                     break
+                print(Fore.LIGHTGREEN_EX + "{0}:第{1}尝试".format(shop_name, nums) + Style.RESET_ALL)
             self.delete_file(token, file_id, cookie)
         return sum_cost
 
@@ -428,7 +428,6 @@ class TbkDeal:
         }
         data_encode = urllib.parse.urlencode(item)
         response = self.get_content(url, data_encode, cookie)
-        print(response)
         code = response['code']
         if code == '200':
             return response['result']
@@ -699,13 +698,10 @@ class TbkDeal:
         dt = time_start.strftime('%Y-%m-%d')
         for i in sn:
             # shop_name = i
+            shop_name = i[0]
+            user_name = i[1]
+            password = i[2]
             try:
-                # if shop_name in sn:
-                # user_name = config.get(i, 'user_name')
-                # password = config.get(i, 'password')
-                shop_name = i[0]
-                user_name = i[1]
-                password = i[2]
                 # 数据处理
                 if flag:
                     self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
@@ -748,8 +744,7 @@ class TbkDeal:
             h_data_pd.apply(lambda x: self.save_data('tm_ztc_sku', x, conn, cursor, yes_date), axis=1)
         else:
             print(Fore.LIGHTRED_EX + '一条推广费也没有获取到' + Style.RESET_ALL)
-        if h_data_pd.shape[0]:
-            print(h_data_pd.shape)
+        if n_data_pd.shape[0]:
             n_data_pd.apply(lambda x: self.save_data('tm_ztc_sku_none', x, conn, cursor, yes_date), axis=1)
         else:
             print(Fore.LIGHTRED_EX + '没有一条未计算的推广费' + Style.RESET_ALL)
@@ -776,7 +771,7 @@ if __name__ == '__main__':
     ft = 0
     fg = True
     dr = 1
-    shopname_list = ['象帝数码专营店']
+    shopname_list = ['九阳尊实专卖店']
     td = TbkDeal()
     td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 
