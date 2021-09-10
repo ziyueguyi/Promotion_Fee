@@ -32,8 +32,8 @@ from datetime import datetime, date
 from funtions.jd_jzt_cost_bk import JztCost
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-wx_key = 'b9c7e2d4-f972-454d-9db9-ae2b27cdb38d'
-# wx_key = None
+# wx_key = 'b9c7e2d4-f972-454d-9db9-ae2b27cdb38d'
+wx_key = None
 send = send_message.Send(wx_key=wx_key)
 
 
@@ -73,7 +73,7 @@ async def main(un, pw, sn):
             await page.goto('https://jzt.jd.com/home/#/index',
                             {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
         except BaseException as e:
-            print(e)
+            print(e, 6)
         await page.evaluateOnNewDocument(
             '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
         time.sleep(random.randint(3, 6))
@@ -86,11 +86,11 @@ async def main(un, pw, sn):
             with open(path, 'w') as f:
                 json.dump(cookies, f)
         except BaseException as e:
-            statue = Fore.LIGHTRED_EX_EX+"cookies获取失败"+Style.RESET_ALL
+            statue = Fore.LIGHTRED_EX_EX + "cookies获取失败" + Style.RESET_ALL
             ''.format(e)
         await page.waitFor(5000)
     except BaseException as e:
-        print(e)
+        print(e, 5)
         statue = Fore.LIGHTRED_EX_EX + "浏览器模拟失败" + Style.RESET_ALL
     finally:
         print('{0}:{1}'.format(shop_name, statue))
@@ -175,8 +175,8 @@ def g_sql(fn, mgr):
         ht_sku_type = ['y_kc', 'y_ht', 'y_tp', 'y_hz']
         bc_sku_type = ['c_kc', 'c_ht', 'c_tp', 'c_hz']
         xt_sku_type_n = ['xn_kc', 'xn_ht', 'xn_tp', 'xn_hz']
-        data = data_jh('jd_ztc_cost', [shop_user, sku_type, xt_sku_type])
-        n_data = data_jh('jd_ztc_cost_none', [shop_user, sku_type, xt_sku_type_n])
+        data = data_jh('jd_ztc_cost', [shop_user, sku_type, xt_sku_type])[[*shop_user, *xt_sku_type]]
+        n_data = data_jh('jd_ztc_cost_none', [shop_user, sku_type, xt_sku_type_n])[[*shop_user, *xt_sku_type_n]]
         data.rename(columns=dict(zip(sku_type, xt_sku_type)), inplace=True)
         if n_data.shape[0]:
             data = pd.merge(data, n_data, on=shop_user, how='left')
@@ -264,7 +264,8 @@ def g_sku_non(fn):
     """
     s_sql = """select sku_id,sku_cost,sku_code,sku_type,shop_name,create_date,user_name from jd_ztc_cost_none"""
     data = mso.bing_mysql(s_sql, db_type='pro', tip=False)
-    if data:
+    dayOfWeek = datetime.now().isoweekday()
+    if data and dayOfWeek not in (6, 7):
         data = pd.DataFrame(data, columns=['商品编号', '花费', '商品sku', '推广费类型', '店铺名称', '日期', '责任人'])
         data.to_excel(fn, index_label=None, index=None)
         time.sleep(1)
@@ -285,7 +286,7 @@ def run(num=5, flag=True, shop_name=None):
     db = mso.DC(db_type='pro')
     s_sql = 'select user_name,pwd,shop_name,name from jd_jzt_user where use_off="1" and shop_type = 1'
     jd_user = db.bing_mysql(s_sql)
-    shop_name = [i for i in jd_user if not shop_name or i[2] in shop_name]
+    shop_name = [i for i in jd_user if flag or i[2] in shop_name]
     print([sn[2] for sn in shop_name])
     if shop_name:
         mgr = multiprocessing.Manager().list()
@@ -309,7 +310,7 @@ def send_file(route, jc, mgr, jd_user):
         remove_ushop(jd_user, route)
         remove_over_data(route)
     except BaseException as e:
-        print(e)
+        print(e, 4)
         send.send_msg('京东推广费推送失败')
 
 
@@ -363,14 +364,14 @@ def remove_over_data(rt):
 
 @funtion.add_time
 def main_run(flag=True):
-    one_start = ['JD-水星家纺尊实专卖店_1']
+    one_start = ['头号卖家官方旗舰店_3', '头号卖家官方旗舰店_2']
     run(flag=flag, shop_name=one_start)
 
 
-# def test():
-#     fn = './tool/2021/7/30/京东.xlsx'
-#     c = [['JD-水星家纺尊实专卖店_1', 'tt', 1, 2, 3, 0]]
-#     g_sql(fn, c)
+def test():
+    fn = './tool/2021/7/30/京东.xlsx'
+    c = [['头号卖家官方旗舰店', '王宁', 1, 2, 3, 0]]
+    g_sql(fn, c)
 
 
 if __name__ == '__main__':
@@ -378,7 +379,7 @@ if __name__ == '__main__':
     # exit()
     print('程序启动')
     # 单次执行
-    main_run(flag=True)
+    main_run(flag=False)
     # 定时运行
     bs = BlockingScheduler()
     bs.add_job(main_run, 'cron', hour=8, minute=0, misfire_grace_time=1000 * 90)

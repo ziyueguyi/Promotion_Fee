@@ -50,7 +50,7 @@ class deal_none:
             try:
                 data.dropna(axis=1, inplace=True)
                 data = data[self.columns]
-                data['商品sku'] = data['商品sku'].str.strip().apply(lambda x:x[:18])
+                data['商品sku'] = data['商品sku'].str.strip().apply(lambda x: x[:18])
                 data['店铺名称'] = data['店铺名称'].str.strip()
                 data[self.columns[3]] = data[self.columns[3]].str.strip()
                 data = data[data['商品sku'].str.len() >= 18]
@@ -96,7 +96,7 @@ class deal_none:
         try:
             filed = filed.split('_')[0]
         except BaseException as e:
-            print(e)
+            print(e, 3)
         finally:
             return filed
 
@@ -105,7 +105,7 @@ class deal_none:
         try:
             data['店铺名称'] = self.split_(data['店铺名称'])
         except BaseException as e:
-            print(e)
+            print(e, 2)
         if self.tx_sku(data[['商品编号', '商品sku', '店铺名称']], old_shop):
             s_sql = """SELECT {0} FROM {1} WHERE {2}="{3}"
             """.format(','.join(self.db_columns[self.type_db[0]]), self.type_db[0], self.db_columns[self.type_db[0]][0],
@@ -128,7 +128,7 @@ class deal_none:
                                          str(tuple(new_data)), self.type_db[2])
                     self.dc.bing_mysql(i_sql)
                 except BaseException as e:
-                    print(e)
+                    print(e, 1)
             elif num[0][2] != data['店铺名称'] or num[0][3] != data[self.zi_type[self.flag_type]]:
                 pic = data[self.zi_type[self.flag_type]]
                 if not self.flag_type:
@@ -196,6 +196,8 @@ class deal_none:
 
 if __name__ == '__main__':
     # flag True代表京东，False代表天猫
-    flag = True
+    flag = False
     dn = deal_none(flag)
     dn.run()
+
+

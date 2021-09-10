@@ -24,8 +24,6 @@ from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from configparser import ConfigParser
-
-from base_fun.funtion import get_route
 from funtions.tm_get_goodname import g_sn
 
 """
@@ -104,15 +102,26 @@ class TbkDeal:
         funtion.chect_dir(base_route)
         cookie = './tool/tm_data/{0}/cookies/ztc_cookies.json'.format(shop_name)
         cookie = funtion.load_cookie(cookie)
-        token, sn = self.get_token(cookie)
+        token = self.get_token(cookie)
         sum_cost = self.get_cost(token, yesterday_time, cookie)
         # 直通车
         fn = '{0}{1}'.format(shop_name, yesterday_time)
-        file_name = self.get_ztc_cost(token, yesterday_time, cookie, fn)
-        if file_name:
-            time.sleep(60)
-            response = self.ztc_online_download(token, cookie)
-            self.down_file(token, file_name, cookie, base_route, response)
+        file_id = self.get_ztc_cost(token, yesterday_time, cookie, fn)
+        if file_id:
+            time.sleep(30)
+            nums = 0
+            while nums < 3:
+                nums += 1
+                time.sleep(30)
+                custId = self.ztc_online_download(token, cookie)
+                if not custId:
+                    continue
+                self.down_file(cookie, base_route, custId, file_id)
+                file_names = funtion.route_join(base_route, '{0}.csv'.format(fn))
+                if os.path.exists(file_names):
+                    break
+                print(Fore.LIGHTGREEN_EX + "{0}:第{1}尝试".format(shop_name, nums) + Style.RESET_ALL)
+            self.delete_file(token, file_id, cookie)
         return sum_cost
 
     def ztc_online_download(self, token, cookie):
@@ -132,7 +141,10 @@ class TbkDeal:
         }
         data_encode = urllib.parse.urlencode(item)
         response = self.get_content(url, data_encode, cookie)
-        return response
+        custId = 0
+        if response['code']:
+            custId = response['result']['items'][0]['custId']
+        return custId
 
     def start(self, shop_name, cols, time_start, time_end, flag_type=0, flag=True):
         ''.format(time_end)
@@ -369,9 +381,8 @@ class TbkDeal:
     def get_token(self, cookie):
         url = 'https://subway.simba.taobao.com/bpenv/getLoginUserInfo.htm'
         response = self.get_content(url, None, cookie)
-        shop_name = response['result']['nickName']
         token = response['result']['token']
-        return token, shop_name
+        return token
 
     def get_cost(self, token, yesterday_time, cookie):
         """获取总额"""
@@ -415,44 +426,40 @@ class TbkDeal:
         }
         data_encode = urllib.parse.urlencode(item)
         response = self.get_content(url, data_encode, cookie)
-        print(response)
         code = response['code']
         if code == '200':
-            return file_name
+            return response['result']
         else:
             return None
 
-    def down_file(self, token, file_name, cookie, base_route, response):
-        time.sleep(5)
-
-        print(response)
-        #1304740092
-        for i in response['result']['items']:
-            file_names = i['fileName']
-            if file_name == file_names:
-                cost_id = i['custId']
-                f_id = i['id']
-                url = f'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.11816827.0.0.10c868f8695S29&custId={cost_id}&taskId={f_id}&token=abc77a1a'
-                response_content = self.get_contents(url, cookie)
-                _tmp_file = tempfile.TemporaryFile()  # 创建临时文件
-                _tmp_file.write(response_content)  # byte字节数据写入临时文件
-                zf = zipfile.ZipFile(_tmp_file, mode='r')
-                for names in zf.namelist():
-                    try:
-                        file_names = names.encode('cp437').decode('gbk')
-                    except BaseException as e:
-                        ''.format(e)
-                        file_names = names.encode('utf-8').decode('utf-8')
-                    zf.extract(names, base_route)
-                    if names != file_names:
-                        names = funtion.route_join(base_route, names)
-                        if os.path.exists(names):
-                            file_names = funtion.route_join(base_route, file_names)
-                            if os.path.exists(file_names):
-                                os.remove(file_names)
-                            os.rename(names, file_names)
-                time.sleep(5)
-                self.delete_file(token, f_id, cookie)
+    def down_file(self, cookie, base_route, cost_id, file_id):
+        """
+        把文件下载带本地
+        :param cookie: 获取的cookie，进行验证
+        :param base_route: 文件的保存路径
+        :param cost_id: 获取的验证编码
+        :param file_id: 获取的文件编码
+        :return: None
+        """
+        url = f'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.11816827.0.0.10c868f8695S29&custId={cost_id}&taskId={file_id}&token=abc77a1a'
+        response_content = self.get_contents(url, cookie)
+        _tmp_file = tempfile.TemporaryFile()  # 创建临时文件
+        _tmp_file.write(response_content)  # byte字节数据写入临时文件
+        zf = zipfile.ZipFile(_tmp_file, mode='r')
+        for names in zf.namelist():
+            try:
+                file_names = names.encode('cp437').decode('gbk')
+            except BaseException as e:
+                ''.format(e)
+                file_names = names.encode('utf-8').decode('utf-8')
+            zf.extract(names, base_route)
+            if names != file_names:
+                names = funtion.route_join(base_route, names)
+                if os.path.exists(names):
+                    file_names = funtion.route_join(base_route, file_names)
+                    if os.path.exists(file_names):
+                        os.remove(file_names)
+                    os.rename(names, file_names)
 
     def delete_file(self, token, task_id, cookie):
         """删除文件"""
@@ -689,13 +696,10 @@ class TbkDeal:
         dt = time_start.strftime('%Y-%m-%d')
         for i in sn:
             # shop_name = i
+            shop_name = i[0]
+            user_name = i[1]
+            password = i[2]
             try:
-                # if shop_name in sn:
-                # user_name = config.get(i, 'user_name')
-                # password = config.get(i, 'password')
-                shop_name = i[0]
-                user_name = i[1]
-                password = i[2]
                 # 数据处理
                 if flag:
                     self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
@@ -704,12 +708,24 @@ class TbkDeal:
                     print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
                 new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
             except BaseException as e:
-                print(e, Fore.LIGHTRED_EX + '{0}:为获取成功'.format(shop_name), Style.RESET_ALL)
+                print(e, Fore.LIGHTRED_EX + '{0}:未获取成功'.format(shop_name), Style.RESET_ALL)
         if new_pd.shape[0]:
             self.del_data(new_pd, time_start)
         else:
             print('今天没有获取推广费')
 
+    # def get_datas(self,data,dt,flag_type,cols,time_start,time_end):
+    #     shop_name,user_name,password = *data
+    #     try:
+    #         # 数据处理
+    #         if flag:
+    #             self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+    #             print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
+    #         else:
+    #             print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
+    #         new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
+    #     except BaseException as e:
+    #         print(e, Fore.LIGHTRED_EX + '{0}:未获取成功'.format(shop_name), Style.RESET_ALL)
     def del_data(self, new_pd, time_start):
         new_pd['shop_type'] = '天猫商城'
         new_pd['exp_date'] = (time_start + timedelta(days=-1)).strftime('%Y-%m-%d')
@@ -737,24 +753,23 @@ class TbkDeal:
         if h_data_pd.shape[0]:
             h_data_pd.apply(lambda x: self.save_data('tm_ztc_sku', x, conn, cursor, yes_date), axis=1)
         else:
-            print(Fore.LIGHTRED_EX + '一条推广费也没有获取到' + Style.RESET_ALL)
-        if h_data_pd.shape[0]:
-            print(h_data_pd.shape)
+            print(Fore.LIGHTRED_EX + '未获取到推广费也' + Style.RESET_ALL)
+        if n_data_pd.shape[0]:
             n_data_pd.apply(lambda x: self.save_data('tm_ztc_sku_none', x, conn, cursor, yes_date), axis=1)
         else:
-            print(Fore.LIGHTRED_EX + '没有一条未计算的推广费' + Style.RESET_ALL)
+            print(Fore.LIGHTGREEN_EX + '没有未计算的推广费' + Style.RESET_ALL)
         print(Fore.LIGHTGREEN_EX + '数据保存结束', Style.RESET_ALL)
         cursor.close()
         conn.close()
 
-        d_year, d_month, d_day = funtion.get_route(time_start.strftime('%Y-%m-%d'))
-        filename = funtion.route_join('./tool', d_year, d_month, d_day, '补差文档')
-        funtion.chect_dir(filename)
-        filename = funtion.route_join(filename, '天猫推广费.xlsx')
-        gn = g_sn()
-        gn.tgg_run(filename)
-        send = send_message.Send()
-        send.send_file(filename)
+        # d_year, d_month, d_day = funtion.get_route(time_start.strftime('%Y-%m-%d'))
+        # filename = funtion.route_join('./tool', d_year, d_month, d_day, '补差文档')
+        # funtion.chect_dir(filename)
+        # filename = funtion.route_join(filename, '天猫推广费.xlsx')
+        # gn = g_sn()
+        # gn.tgg_run(filename)
+        # send = send_message.Send()
+        # send.send_file(filename)
 
 
 if __name__ == '__main__':
@@ -763,10 +778,10 @@ if __name__ == '__main__':
     #  fg 代表是否使用离线的excel报表,True 为在线文档 False使用本地的Excel
     #  dr 代表获取的日期范围
 
-    ft = 2
+    ft = 0
     fg = True
     dr = 1
-    shopname_list = ['科沃斯尊实专卖店']
+    shopname_list = []
     td = TbkDeal()
     td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 

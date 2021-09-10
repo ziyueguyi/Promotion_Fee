@@ -49,7 +49,7 @@ class g_sn:
                         print(self.base_url + str(i))
                         await page.goto(self.base_url + str(i),
                                         {'timeout': 1000 * 20})
-                        await asyncio.sleep(random.randint(2, 4))
+                        await asyncio.sleep(random.randint(2, 6))
                         await page.evaluateOnNewDocument(
                             '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
                         good_name = await page.Jx('//*[@id="J_DetailMeta"]/div[1]/div[1]/div/div[1]/h1/a')
