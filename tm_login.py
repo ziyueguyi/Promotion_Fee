@@ -19,12 +19,11 @@ from retrying import retry
 from pyppeteer import launch
 from jsonpath import jsonpath
 from colorama import Fore, Style
-from base_fun import funtion, mso, send_message
+from base_fun import funtion, mso
 from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from configparser import ConfigParser
-from funtions.tm_get_goodname import g_sn
 
 """
 天猫淘宝客账号登陆
@@ -170,6 +169,7 @@ class TbkDeal:
             sum_cost = 0
             if flag:
                 sum_cost = self.ztc_content(yesterday_time, shop_name, base_route)
+                # sum_cost = ztc.get_ztc().ztc_content(yesterday_time, shop_name, base_route)
             file_route_dict['直通车'] = [self.deal_ztc, self.create_file(base_route, '直通车',
                                                                       '{0}{1}.csv'.format(shop_name, yesterday_time)),
                                       sum_cost]
@@ -536,9 +536,11 @@ class TbkDeal:
         funtion.chect_dir(file_route)
         width, height = await self.screen_size()
         base_url = 'https://www.alimama.com/member/login.htm'
-        browser = await launch(headless=False, handleSIGINT=False, handleSIGTERM=False, handleSIGHUP=False,
+        browser = await launch(headless=False,
+                               handleSIGINT=False,
+                               handleSIGTERM=False,
+                               handleSIGHUP=False,
                                userDataDir=funtion.route_join(file_route, 'userdata'),
-
                                args=['--disable-infobars',
                                      '--no-sandbox',
                                      '--disable-setuid-sandbox''--window-size={0},{1}'.format(width, height)],
@@ -578,7 +580,7 @@ class TbkDeal:
                 }
             if flag_type == 0 or flag_type == 3:
                 tm_hd_dict['cjzz'] = {
-                    'url': 'https://tuijian.taobao.com/indexbp.html#!/report/whole/index?alias=all&perspective=report',
+                    'url': 'https://tuijian.taobao.com/indexbp-feedflow.html#!/report/whole/index?alias=all&perspective=report',
                     'cookie_name': 'cjzz_cookies.json',
                     'but_id': '//*[@id="mx_171"]/div/div[2]/div[2]/a'
                 }
@@ -664,20 +666,20 @@ class TbkDeal:
         except Exception as e:
             print(e)
 
-    @staticmethod
-    def data_time_cal(data_range=1, start_time=None):
-        """
-        输入时间范围和结束最近的时间
-        :param data_range:
-        :param start_time:
-        :return:
-        """
-        time_start = datetime.now()  # 获取当前的日期时间
-        time_end = time_start - timedelta(data_range)
-        if start_time and isinstance(time_end, datetime):
-            time_start = start_time
-        else:
-            print("请检查输入的时间类型是否正确")
+    # @staticmethod
+    # def data_time_cal(data_range=1, start_time=None):
+    #     """
+    #     输入时间范围和结束最近的时间
+    #     :param data_range:
+    #     :param start_time:
+    #     :return:
+    #     """
+    #     time_start = datetime.now()  # 获取当前的日期时间
+    #     time_end = time_start - timedelta(data_range)
+    #     if start_time and isinstance(time_end, datetime):
+    #         time_start = start_time
+    #     else:
+    #         print("请检查输入的时间类型是否正确")
 
     @funtion.add_time
     def get_start(self, sn=None, flag_type=0, flag=True, data_range=1):
@@ -765,26 +767,21 @@ class TbkDeal:
         # d_year, d_month, d_day = funtion.get_route(time_start.strftime('%Y-%m-%d'))
         # filename = funtion.route_join('./tool', d_year, d_month, d_day, '补差文档')
         # funtion.chect_dir(filename)
-        # filename = funtion.route_join(filename, '天猫推广费.xlsx')
-        # gn = g_sn()
-        # gn.tgg_run(filename)
-        # send = send_message.Send()
-        # send.send_file(filename)
 
 
 if __name__ == '__main__':
     print('程序启动')
-    #  ft 代表运行那种推广费,0：获取所有，1:代表淘宝客，2：代表直通车，3：代表品牌新享
+    #  ft 代表运行那种推广费,0：获取所有，1:代表淘宝客，2：代表直通车，3：代表超级推荐
     #  fg 代表是否使用离线的excel报表,True 为在线文档 False使用本地的Excel
     #  dr 代表获取的日期范围
 
     ft = 0
     fg = True
     dr = 1
-    shopname_list = []
+    shopname_list = ['头号卖家官方旗舰店_4', '头号卖家官方旗舰店_6']
     td = TbkDeal()
-    td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
+    # td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 
     scheduler = BlockingScheduler()
-    scheduler.add_job(td.get_start, 'cron', hour=7, minute=10, misfire_grace_time=1000 * 90)
+    scheduler.add_job(td.get_start, 'cron', hour=4, minute=10, misfire_grace_time=1000 * 90)
     scheduler.start()

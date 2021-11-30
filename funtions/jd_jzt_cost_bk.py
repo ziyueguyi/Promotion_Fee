@@ -4,7 +4,6 @@
 # @软件名称  :PyCharm
 # @创建时间  :2021-05-06 14:04
 # @用户名称  :紫月孤忆
-import math
 import os
 import json
 import time
@@ -15,7 +14,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 from retrying import retry
-from base_fun import mso, funtion
+from base_fun import mso
 from datetime import timedelta, datetime
 from colorama import Fore, Style
 
@@ -107,9 +106,10 @@ class JztCost(object):
         self.get_content(url, data, shop_name)
         return reportName
 
-    def add_ht_list(self, shop_name, yesterday_time, db_name, user_name, end_day):
+    def add_ht_list(self, shop_name, yesterday_time, db_name, user_name, end_day, sc):
         """
         获取海投商品list
+        :param sc:
         :param shop_name:
         :param yesterday_time:
         :param db_name:
@@ -129,6 +129,8 @@ class JztCost(object):
                 "ids": ids, "requestFrom": 0}
         response = self.get_content(url, data, shop_name)
         datas = json.loads(response)['data']['datas']
+        sku_list = []
+        # cost = 0
         for i in datas:
             cost = i['cost']
             if cost != '0.00':
@@ -143,13 +145,25 @@ class JztCost(object):
                 response = self.get_content(url, data_2, shop_name)
                 detail_data = json.loads(response)
                 brand_list = detail_data['data']['datas']
-                sku_list = []
                 for item in brand_list:
+                    time.sleep(5)
                     sum_cost = item['cost'][0]
-                    if float(sum_cost) >= float('10.00'):
+                    if float(sum_cost) >= float('0.01'):
                         name = item['name']
                         skuBrandId = item['skuBrandId']
                         skuCid3 = item['skuCid3']
+                        # page_index = 1
+
+                        # while True:
+                        #     json_sku = self.page_data(yesterday_time, page_id, name, skuBrandId, skuCid3, shop_name, page_index)
+                        #     pages_sku = json_sku['data']['paginator']['pages']
+                        #     data_list = json_sku['data']['datas']
+                        #     if page_index > pages_sku + 1:
+                        #         break
+                        #     for j in data_list:
+                        #         item = {'sku_id': j['id'], 'sku_cost': float(j['cost'][0])}
+                        #         sku_list.append(item)
+                        #     page_index += 1
 
                         json_sku = self.page_data(yesterday_time, page_id, name, skuBrandId, skuCid3, shop_name, 1)
                         pages_sku = json_sku['data']['paginator']['pages']
@@ -162,37 +176,51 @@ class JztCost(object):
                                                        ps)
                             data_lists = json_skus['data']['datas']
                             for j in data_lists:
+                                # print(name, j['id'], j['cost'][0])
                                 item = {'sku_id': j['id'], 'sku_cost': float(j['cost'][0])}
                                 sku_list.append(item)
 
-                try:
-                    df = pd.DataFrame(sku_list)
-                    self.save_file('ht', shop_name, end_day, df)
-                    df['sku_code'] = df.sku_id.apply(self.get_sku_code)
-                    # df.sku_code.fillna(method='bfill', inplace=True)  # bfill:向前填充
-                    # df.sku_code.fillna(method='ffill', inplace=True)
-                    df['create_date'] = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d')
-                    df['create_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    sum_cost = np.around(df.sku_cost.sum(), 2)
-                    diff_cost = float(cost) - sum_cost
-                    df['sku_cost'] = df.sku_cost + round(diff_cost / len(df), 2)
-                    df['sku_cost'] = np.around(df.sku_cost, 2)
-                    df.loc[df.shape[0] - 1, 'sku_cost'] += float(float(cost) - df.sku_cost.sum())
-                    df['sum_cost'] = np.around(df.sku_cost.sum(), 2)
-                    df['cost_money'] = cost
-                    df['user_name'] = user_name
-                    df['shop_name'] = shop_name
-                    df['shop_type'] = '京东商城'
-                    df['sku_type'] = db_name
-                    df4 = df[df.sku_code.isna()]  # None
-                    df5 = df[df.sku_code.notna()]
-                    # 处理空值
-                    self.save_date(df4, 'jd_ztc_cost_none')
-                    # # 处理正常值入库
-                    self.save_date(df5, 'jd_ztc_cost')
-
-                except Exception as e:
-                    print(shop_name, e, len(sku_list), sku_list)
+        try:
+            df = pd.DataFrame(sku_list)
+            if df.shape[0]:
+                df = df.groupby(by='sku_id').sum().reset_index()[['sku_id', 'sku_cost']]
+                df['sku_id'] = df['sku_id'].astype(str)
+                self.save_file('ht', shop_name, end_day, df)
+                df['sku_code'] = df.sku_id.apply(self.get_sku_code)
+                df = df[(df['sku_cost'] != 0.00) | (df['sku_cost'] != 0)].copy()
+                df['create_date'] = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d')
+                df['create_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                sum_cost = np.around(df.sku_cost.sum(), 2)
+                diff_cost = float(sc) - sum_cost
+                df_num = df.shape[0]
+                df['sku_cost'] = df.sku_cost + round(diff_cost / df_num if df_num > 0 else 1, 2)
+                df['sku_cost'] = np.around(df['sku_cost'], 2)
+                # cz = float(float(cost) - df.sku_cost.sum())
+                # try:
+                #     if cz > 0:
+                #         print(cz/df.shape[0])
+                #         print(df['sku_cost'])
+                #         df['sku_cost'] -= cz/df.shape[0]
+                # except BaseException as e:
+                #     print('{0}({1}):'.format(shop_name, db_name, e),
+                #           Fore.LIGHTRED_EX + '部分费用无法分摊' + Style.RESET_ALL, cz)
+                df['sku_cost'] = df['sku_cost'].round(2)
+                df['sum_cost'] = np.around(df.sku_cost.sum(), 2)
+                df['cost_money'] = sc
+                df['user_name'] = user_name
+                df['shop_name'] = shop_name
+                df['shop_type'] = '京东商城'
+                df['sku_type'] = db_name
+                df4 = df[df.sku_code.isna()]  # None
+                df5 = df[df.sku_code.notna()]
+                # 处理空值
+                self.save_date(df4, 'jd_ztc_cost_none')
+                # # 处理正常值入库
+                self.save_date(df5, 'jd_ztc_cost')
+            else:
+                print('{0}:{1}'.format(shop_name, db_name), Fore.LIGHTRED_EX + '没有订单存在' + Style.RESET_ALL)
+        except Exception as e:
+            print(shop_name, e, len(sku_list), sku_list)
 
     def page_data(self, yesterday_time, pf_id, name, skuBrandId, skuCid3, shop_name, page):
         sku_data = {"campaignType": 3, "startDay": yesterday_time, "endDay": yesterday_time,
@@ -261,7 +289,6 @@ class JztCost(object):
         for i in datas:
             if i['status'] == 2 and i['reportName'] == reportName:
                 reportName = i['reportName']
-                # print('down-file:{0}>{1}'.format(shop_name, reportName))
                 url = i['downloadUrl']
                 self.down_file(url, reportName, cost_money, db_name, shop_name, name, end_day)
                 # 删除文件
@@ -269,8 +296,8 @@ class JztCost(object):
                 delete_url = 'https://jzt-api.jd.com/api/download/common/asyn/download/reportInfo/batch/delete'
                 datas = {"ids": [i['id']], "requestFrom": 0}
                 self.get_content(delete_url, datas, shop_name)
-                break
-
+                if db_name == "kc":
+                    break
 
     @staticmethod
     def get_route(str_data):
@@ -303,7 +330,6 @@ class JztCost(object):
         route_fn = './tool/datas/{0}/cache/'.format(shop_name)
         if not os.path.exists(route_fn):
             os.makedirs(route_fn)
-        # if '快车' in name:
         try:
             _tmp_file = tempfile.TemporaryFile()  # 创建临时文件
             _tmp_file.write(response.content)  # byte字节数据写入临时文件
@@ -316,7 +342,6 @@ class JztCost(object):
             with open(file_name, 'w', encoding='utf-8') as f:
                 f.write(response.content.decode())
         self.deal_data(file_name, name, end_day, cost_money, user_name, db_name, shop_name)
-
 
     def deal_data(self, file_name, name, end_day, cost_money, user_name, db_name, shop_name):
         if os.path.exists(file_name):
@@ -332,14 +357,15 @@ class JztCost(object):
             df3['create_date'] = (datetime.now() + timedelta(days=-1)).strftime('%Y-%m-%d')
             df3['create_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sum_cost = np.around(df3.sku_cost.sum(), 2)
-            diff_cost = float(cost_money) - sum_cost
-            df3['sku_cost'] = np.around(df3.sku_cost, 2) + round(diff_cost / len(df3.shape[0]), 2)
+            order_num = df3.shape[0]
+            diff_cost = round((float(cost_money) - sum_cost) / order_num if order_num else 1, 2)
+            df3['sku_cost'] = df3['sku_cost'] + diff_cost
             less_df = float(float(cost_money) - df3.sku_cost.sum())
             try:
-                if less_df > 0.0:
+                if less_df > 0.0 and df3.shape[0]:
                     df3.loc[df3.shape[0] - 1, 'sku_cost'] += round(less_df, 2)
             except Exception as e:
-                ''.format(e)
+                print('{0}({1}):'.format(shop_name, db_name, e), Fore.LIGHTRED_EX + '部分费用无法分摊' + Style.RESET_ALL)
             df3['sku_cost'] = np.around(df3.sku_cost, 2)
             df3['sum_cost'] = np.around(df3.sku_cost.sum(), 2)
             df3['cost_money'] = cost_money
@@ -347,7 +373,6 @@ class JztCost(object):
             df3['shop_name'] = shop_name
             df3['shop_type'] = '京东商城'
             df3['sku_type'] = db_name
-
             df_dict = {
                 'jd_ztc_cost': df3[df3.sku_code.notna()],
                 'jd_ztc_cost_none': df3[df3.sku_code.isna()],
@@ -396,17 +421,6 @@ class JztCost(object):
         cursor.close()
         conn.close()
 
-    def touch_point(self, time_day, shop_name):
-        """
-        触点推广计划报表
-        :param time_day:
-        :param shop_name:
-        :return:
-        """
-        url = 'https://jzt-api.jd.com/touchpoint/report/account/campaign'
-        sec_kill_cost, sum_cost = self.get_kill_cost(url, time_day, shop_name)
-        return sec_kill_cost, sum_cost
-
     def cost_yesterday(self, name, business_type, start_day, end_day, shop_name):
         """
         前一天花费
@@ -418,12 +432,12 @@ class JztCost(object):
         :return:
         """
         url = 'https://jzt-api.jd.com/common/indicator?requestFrom=0'
-        data = {"businessType": business_type, "granularity": 4, "startDay": start_day, "endDay": end_day}
+        data = {"businessType": business_type, "granularity": 4, "startDay": start_day, "endDay": start_day,
+                'clickOrOrderCaliber': 0, 'clickOrOrderDay': 15,'orderStatusCategory': 'null'}
         response = requests.post(url, json=data, headers=self.headers, cookies=self.cookies_load(shop_name))
         json_response = response.json()
-
         try:
-            cost = json_response['data']['cost']['sub']
+            cost = json_response['data']['cost']['main']
         except Exception as e:
             print(shop_name, 'login 过期', e)
             cost = 0
@@ -497,15 +511,15 @@ class JztCost(object):
                         sku_type = Fore.LIGHTBLUE_EX + sku_type_kc + Style.RESET_ALL
                     except BaseException as e:
                         print(e)
-                        print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_kc, e) + Style.RESET_ALL)
-                        sku_type = Fore.LIGHTRED_EX + sku_type_kc + Style.RESET_ALL
+                        # print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_kc, e) + Style.RESET_ALL)
+                        sku_type = Fore.LIGHTRED_EX + sku_type_kc + '获取失败' + Style.RESET_ALL
                     finally:
                         pass
                 else:
                     sku_type = Fore.LIGHTRED_EX + sku_type_kc + Style.RESET_ALL
                 print('{0}({1}):{2}'.format(sn, sku_type, sum_cost[sku_type_kc]))
 
-                # # 触点
+                # 触点
                 sku_type_cd = '京东触点'
                 if abs(int(sum_cost[sku_type_cd])) != 0:
                     try:
@@ -514,23 +528,24 @@ class JztCost(object):
                         self.get_file(report_name, data_cd, sum_cost[sku_type_cd], 'tp', shop_name, name, end_day)
                         sku_type = Fore.LIGHTBLUE_EX + sku_type_cd + Style.RESET_ALL
                     except BaseException as e:
-                        print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_cd, e) + Style.RESET_ALL)
-                        sku_type = Fore.LIGHTRED_EX + sku_type_cd + Style.RESET_ALL
+                        # print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_cd, e) + Style.RESET_ALL)
+                        sku_type = Fore.LIGHTRED_EX + sku_type_cd + '获取失败' + Style.RESET_ALL
                     finally:
                         pass
                 else:
                     sku_type = Fore.LIGHTRED_EX + sku_type_cd + Style.RESET_ALL
                 print('{0}({1}):{2}'.format(sn, sku_type, sum_cost[sku_type_cd]))
-                #
-                # # 海投
+
+                # 海投
                 sku_type_ht = '京东海投'
                 if abs(int(sum_cost[sku_type_ht])) != 0:
                     try:
-                        self.add_ht_list(shop_name, start_day, 'ht', name, end_day)
+                        self.add_ht_list(shop_name, start_day, 'ht', name, end_day, sum_cost[sku_type_ht])
                         sku_type = Fore.LIGHTBLUE_EX + sku_type_ht + Style.RESET_ALL
                     except BaseException as e:
-                        sku_type = Fore.LIGHTRED_EX + sku_type_ht + Style.RESET_ALL
-                        print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_ht, e) + Style.RESET_ALL)
+                        ''.format(e)
+                        sku_type = Fore.LIGHTRED_EX + sku_type_ht + '获取失败' + Style.RESET_ALL
+                        # print(Fore.LIGHTRED_EX + '{0}:{1}获取失败'.format(sn, sku_type_ht, e) + Style.RESET_ALL)
                     finally:
                         pass
                 else:
@@ -550,7 +565,7 @@ class JztCost(object):
                      r_amount])
             else:
                 pfd_list.extend([None, None, None, None])
-                print('{0}:没有花费推广费'.format(sn))
+                print('{0}:'.format(sn), Fore.LIGHTYELLOW_EX + '没有花费推广费' + Style.RESET_ALL)
         except BaseException as e:
             print(e)
         finally:

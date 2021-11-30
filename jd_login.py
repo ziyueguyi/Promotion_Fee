@@ -32,8 +32,8 @@ from datetime import datetime, date
 from funtions.jd_jzt_cost_bk import JztCost
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-# wx_key = 'b9c7e2d4-f972-454d-9db9-ae2b27cdb38d'
-wx_key = None
+wx_key = 'b9c7e2d4-f972-454d-9db9-ae2b27cdb38d'
+# wx_key = None
 send = send_message.Send(wx_key=wx_key)
 
 
@@ -69,17 +69,20 @@ async def main(un, pw, sn):
             await page.type('#nloginpwd', pw,
                             {'delay': random.randint(100, 151)})
             await page.click('#paipaiLoginSubmit')
+            await page.evaluateOnNewDocument(
+                '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
             time.sleep(random.randint(3, 6))
-            await page.goto('https://jzt.jd.com/home/#/index',
+            if page.url != "https://www.jd.com/b":
+                time.sleep(60)
+            await page.goto("https://jzt.jd.com/home/#/index",
                             {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
         except BaseException as e:
             print(e, 6)
         await page.evaluateOnNewDocument(
             '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
-        time.sleep(random.randint(3, 6))
+        time.sleep(random.randint(3, 6) if page.url == 'https://jzt.jd.com/home/' else 60)
         cookies = await page.cookies()
         path = r'./tool/datas/{0}/cookies/{1}_{2}.json'.format(sn, 'jd', sn)
-
         statue = Fore.LIGHTBLUE_EX + "cookies获取成功" + Style.RESET_ALL
         try:
             funtion.jud_path(path, flag=False)
@@ -202,6 +205,7 @@ def g_sql(fn, mgr):
                       '补差快车金额', '补差海投金额', '补差触点金额', '补差汇总金额']
         new_data.rename(
             columns=dict(zip(all_columns, zw_columns)), inplace=True)
+        amount_warning(new_data)
         new_data = new_data.style.applymap(
             lambda x: 'background-color: #6495ED' if x > 1 else 'background-color: #FFFFFF',
             subset=['补差快车金额', '补差海投金额', '补差触点金额', '补差汇总金额'])
@@ -212,6 +216,13 @@ def g_sql(fn, mgr):
         send.send_file(fn)
     else:
         print('未成功推送')
+
+
+def amount_warning(new_data):
+    nd = new_data[['补差快车金额', '补差海投金额', '补差触点金额', '补差汇总金额']].copy(deep=True)
+    all_money = nd.apply(lambda x: x.sum(), axis=1).sum()
+    if all_money >= 10:
+        send.send_msg("推广费未录入金额共:{0}元,如无特殊声明，请大家查看后走调整列".format(all_money))
 
 
 def reset_col(filename):
@@ -265,8 +276,10 @@ def g_sku_non(fn):
     s_sql = """select sku_id,sku_cost,sku_code,sku_type,shop_name,create_date,user_name from jd_ztc_cost_none"""
     data = mso.bing_mysql(s_sql, db_type='pro', tip=False)
     dayOfWeek = datetime.now().isoweekday()
-    if data and dayOfWeek not in (6, 7):
+    if data and dayOfWeek != 6:
         data = pd.DataFrame(data, columns=['商品编号', '花费', '商品sku', '推广费类型', '店铺名称', '日期', '责任人'])
+        data['商品编号'].fillna('', inplace=True)
+        data['商品编号'] = data['商品编号'].astype(str)
         data.to_excel(fn, index_label=None, index=None)
         time.sleep(1)
         send.send_file(fn)
@@ -306,12 +319,20 @@ def send_file(route, jc, mgr, jd_user):
         filename = route + '{0}/{1}/{2}/补差文档/'.format(*jc.get_route(dt))
         funtion.chect_dir(filename)
         g_sql(filename + '补差文档{0}.xlsx'.format(dt), mgr)
-        g_sku_non(filename + '京东推广费{0}.xlsx'.format(dt))
+        # g_sku_non(filename + '京东推广费{0}.xlsx'.format(dt))
         remove_ushop(jd_user, route)
         remove_over_data(route)
     except BaseException as e:
         print(e, 4)
         send.send_msg('京东推广费推送失败')
+
+
+def sen_f():
+    dt = datetime.now().strftime('%Y-%m-%d')
+    route = './tool/'
+    filename = route + '{0}/{1}/{2}/补差文档/'.format(2021, 9, 12)
+    print(filename)
+    g_sku_non(filename + '京东推广费{0}.xlsx'.format(dt))
 
 
 def remove_ushop(jd_user, route):
@@ -364,7 +385,7 @@ def remove_over_data(rt):
 
 @funtion.add_time
 def main_run(flag=True):
-    one_start = ['头号卖家官方旗舰店_3', '头号卖家官方旗舰店_2']
+    one_start = ['头号卖家官方旗舰店_4']
     run(flag=flag, shop_name=one_start)
 
 
@@ -382,5 +403,5 @@ if __name__ == '__main__':
     main_run(flag=False)
     # 定时运行
     bs = BlockingScheduler()
-    bs.add_job(main_run, 'cron', hour=8, minute=0, misfire_grace_time=1000 * 90)
+    bs.add_job(main_run, 'cron', hour=3, minute=40, misfire_grace_time=1000 * 90)
     bs.start()

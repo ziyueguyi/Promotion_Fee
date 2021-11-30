@@ -5,7 +5,6 @@
 # @创建时间  :2021-06-20 9:57
 # @用户名称  :紫月孤忆
 import os
-import numpy as np
 import pandas as pd
 from base_fun import funtion
 from colorama import Fore, Style
@@ -139,7 +138,7 @@ class deal_none:
                            self.db_columns[self.type_db[0]][1], data['商品sku'])
                 self.dc.bing_mysql(u_sql)
             else:
-                print('数据已配置')
+                print('{0}》数据已配置'.format(data['商品编号']))
         else:
             print('配置错误')
 
@@ -185,6 +184,7 @@ class deal_none:
 
     def run(self):
         data = self.tra_paths()
+
         if data.shape[0]:
             data = pd.DataFrame(data, columns=self.columns)
             data.apply(self.tj_sku, axis=1)
@@ -196,8 +196,6 @@ class deal_none:
 
 if __name__ == '__main__':
     # flag True代表京东，False代表天猫
-    flag = False
+    flag = True
     dn = deal_none(flag)
     dn.run()
-
-
