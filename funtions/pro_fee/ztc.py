@@ -4,49 +4,66 @@
 # @软件名称  :PyCharm
 # @创建时间  : 2021-10-19 14:24
 # @用户名称  :DELL
+import math
 import os
 import time
 import urllib
 import zipfile
 import tempfile
+
+import pandas as pd
+from datetime import datetime
 from base_fun import funtion
-from jsonpath import jsonpath
-from colorama import Fore, Style
+from base_fun.funtion import getOneday
 from funtions.pub_methods import pub_method
+
+
+# from tm_login import TbkDeal
 
 
 class get_ztc(object):
     def __init__(self):
-        pm = pub_method()
-        self.get_contents = pm.get_contents
-        self.get_content = pm.get_content
+        self.pm = pub_method()
+        self.get_contents = self.pm.get_contents
+        self.get_content = self.pm.get_content
+        self.columns = [
+            '商品id', '花费', '店铺', '编码', '日期', '创建时间', '总花费', '推广类型', '店铺类型', '花费汇总', '直接成交金额', '投入产出比'
+        ]
+        self.columns_en = ['goods_id', 'money', 'shop_name', 'goods_no', 'exp_date', 'update_time',
+                           'sum_cost', 'sku_type', 'shop_type', 'cost_money', 'total_amount', 'ROI']
+        self.headers = {
+            'origin': 'https://subway.simba.taobao.com',
+            'referer': 'https://subway.simba.taobao.com/index.jsp',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'Connection': 'close',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.108 Safari/537.36',
+            'x-requested-with': 'XMLHttpRequest',
+            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'
+        }
 
-    def ztc_content(self, yesterday_time, shop_name, base_route):
-        base_route = funtion.route_join(base_route, '直通车')
-        funtion.chect_dir(base_route)
-        cookie = './tool/tm_data/{0}/cookies/ztc_cookies.json'.format(shop_name)
+    def online_download(self, fn, token, cookie, sessionID, s_date):
+        url = "https://subway.simba.taobao.com/reportdownload/addMultiTask.htm"
+        datas = {
+            'fileName': fn,
+            'dimension': '[103]',
+            'startDate': s_date,
+            'endDate': s_date,
+            'transactionCycle': '-1',
+            'aggregationMode': '1',
+            'sla': 'json',
+            'isAjaxRequest': 'true',
+            'token': token,
+            '_referer': '/report/bpreport/index',
+            'sessionId': sessionID,
+        }
+        self.get_content(url=url, data=datas, cookie=cookie)
+
+    @staticmethod
+    def get_cookie(sn):
+        cookie = './tool/tm_data/{0}/cookies/ztc_cookies.json'.format(sn)
         cookie = funtion.load_cookie(cookie)
-        token = self.get_token(cookie)
-        sum_cost = self.get_cost(token, yesterday_time, cookie)
-        # 直通车
-        fn = '{0}{1}'.format(shop_name, yesterday_time)
-        file_id = self.get_ztc_cost(token, yesterday_time, cookie, fn)
-        if file_id:
-            time.sleep(30)
-            nums = 0
-            while nums < 3:
-                nums += 1
-                time.sleep(30)
-                custId = self.ztc_online_download(token, cookie)
-                if not custId:
-                    continue
-                self.down_file(cookie, base_route, custId, file_id)
-                file_names = funtion.route_join(base_route, '{0}.csv'.format(fn))
-                if os.path.exists(file_names):
-                    break
-                print(Fore.LIGHTGREEN_EX + "{0}:第{1}尝试".format(shop_name, nums) + Style.RESET_ALL)
-            self.delete_file(token, file_id, cookie)
-        return sum_cost
+        return cookie
 
     def get_token(self, cookie):
         url = 'https://subway.simba.taobao.com/bpenv/getLoginUserInfo.htm'
@@ -54,102 +71,96 @@ class get_ztc(object):
         token = response['result']['token']
         return token
 
-    def get_cost(self, token, yesterday_time, cookie):
-        """
-        获取直通车花费总额
-        :param token:
-        :param yesterday_time:
-        :param cookie:
-        :return:
-        """
-        url = f'https://subway.simba.taobao.com/report/rptBpp4pCustomSum.htm?startDate={yesterday_time}&endDate={yesterday_time}&effect=-1'
-        refer = f'/report/bpreport/index?start={yesterday_time}&end={yesterday_time}&page=1'
-        data = {
+    def get_cost_money(self, token, cookie, sessionId, s_date):
+        queryParam = {"startDate": "{0}".format(s_date), "endDate": "{0}".format(s_date), "effect": -1}
+        get_money_url = 'https://subway.simba.taobao.com/openapi/param2/1/gateway.subway/rpt/rptCampaignByDay$'
+        datas = {
+            'queryParam': str(queryParam),
             'sla': 'json',
             'isAjaxRequest': 'true',
             'token': token,
-            '_referer': refer,
-            'sessionId': '3742c665-a4f6-45ab-8270-74aab81b6940'
+            '_referer': '/report/bpreport/index',
+            'sessionId': sessionId
         }
-        data_encode = urllib.parse.urlencode(data)
-        response = self.get_content(url, data_encode, cookie)
-        code = response['code']
-        if code == '200':
-            try:
-                sum_cost = float(jsonpath(response, '$..cost')[0]) / 100
-            except TypeError:
-                sum_cost = 0
-            return sum_cost
-        else:
-            return None
+        response = self.get_content(url=get_money_url, data=datas, cookie=cookie)
+        try:
+            value = float(response['result'][0]['costInYuan'])
+        except BaseException as e:
+            ''.format(e)
+            value = -1
+        return value
 
-    def get_ztc_cost(self, token, yesterday_time, cookie, file_name):
-        """
-        添加快车前一天要生成的文件
-        :param token:
-        :param yesterday_time:
-        :param cookie:
-        :param file_name:
-        :return:
-        """
-        url = 'https://subway.simba.taobao.com/reportdownload/addtask.htm'
-        refer = f'/report/bpreport/index?start={yesterday_time}&end={yesterday_time}&page=1'
-        item = {
-            "fileName": file_name,
-            "dimension": 2,
-            "startDate": yesterday_time,
-            "endDate": yesterday_time,
-            "sla": "json",
-            "isAjaxRequest": "true",
-            "token": token,
-            "_referer": refer,
-            "sessionId": "2d87e4f4-e086-41dd-93bd-e0fc81eb03b5"
+    def get_other_info(self, token, cookie, sessionId, file_name):
+        url = "https://subway.simba.taobao.com/reportdownload/getdownloadTasks.htm"
+        page = 0
+        custId = 0
+        taskId = 0
+        datas = {
+            'pageSize': '200',
+            'pageNumber': page,
+            'sla': 'json',
+            'isAjaxRequest': 'true',
+            'token': token,
+            '_referer': '/report/bpreport/download-list',
+            'sessionId': sessionId,
         }
-        data_encode = urllib.parse.urlencode(item)
-        response = self.get_content(url, data_encode, cookie)
-        code = response['code']
-        if code == '200':
-            return response['result']
-        else:
-            return None
-
-    def down_file(self, cookie, base_route, cost_id, file_id):
-        """
-        把文件下载带本地
-        :param cookie: 获取的cookie，进行验证
-        :param base_route: 文件的保存路径
-        :param cost_id: 获取的验证编码
-        :param file_id: 获取的文件编码
-        :return: None
-        """
-        url = f'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.11816827.0.0.10c868f8695S29&custId={cost_id}&taskId={file_id}&token=abc77a1a'
-        response_content = self.get_contents(url, cookie)
-        _tmp_file = tempfile.TemporaryFile()  # 创建临时文件
-        _tmp_file.write(response_content)  # byte字节数据写入临时文件
-        zf = zipfile.ZipFile(_tmp_file, mode='r')
-        for names in zf.namelist():
+        flag = True
+        while flag:
             try:
-                file_names = names.encode('cp437').decode('gbk')
+                response = self.get_content(url=url, data=datas, cookie=cookie)
+                result = response['result']
+                pages = int(result['totalItem']) // 200
+                if page > pages:
+                    flag = False
+                page += 1
+                fil_list_info = result['items']
+                for fli in fil_list_info[::-1]:
+                    if fli['fileName'] == file_name + '_单元':
+                        custId = fli['custId']
+                        taskId = fli['id']
+                        flag = False
+                        break
             except BaseException as e:
                 ''.format(e)
-                file_names = names.encode('utf-8').decode('utf-8')
-            zf.extract(names, base_route)
-            if names != file_names:
-                names = funtion.route_join(base_route, names)
-                if os.path.exists(names):
-                    file_names = funtion.route_join(base_route, file_names)
-                    if os.path.exists(file_names):
-                        os.remove(file_names)
-                    os.rename(names, file_names)
+                flag = False
+            time.sleep(1)
+        return custId, taskId
 
-    def delete_file(self, token, task_id, cookie):
-        """
-        删除文件
-        :param token:
-        :param task_id:
-        :param cookie:
-        :return:
-        """
+    def dow_file(self, token, cookie, custId, taskId, br):
+        br = funtion.route_join(br, '直通车')
+        down_rul = 'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.23211836.ce272de26.d5325113b.6f3d68f8Q4CscJ&custId={0}&token={1}&taskId={2}'.format(
+            custId, token, taskId)
+        try:
+            response = self.get_contents(url=down_rul, cookie=cookie)
+        except BaseException as e:
+            ''.format(e)
+            return
+
+        __temp_file = tempfile.TemporaryFile()
+        __temp_file.write(response)
+        zf = zipfile.ZipFile(__temp_file, mode='r')
+
+        for names in zf.namelist():
+            try:
+                fn = names.encode('cp437').decode('gbk')
+            except BaseException as e:
+                ''.format(e)
+                fn = names.encode('utf-8').decode('utf-8')
+            zf.extract(names, br)
+            fn = fn.strip('_单元.csv') + '.csv'
+            if names != fn:
+                names = funtion.route_join(br, names)
+                if os.path.exists(names):
+                    fn = funtion.route_join(br, fn)
+                    if os.path.exists(fn):
+                        os.remove(fn)
+                    os.rename(names, fn)
+                else:
+                    return False
+            return True
+
+    def del_file(self, token, cookie, task_id, sessionId):
+        """删除文件"""
         url = 'https://subway.simba.taobao.com/reportdownload/deltask.htm'
         item = {
             "taskId": task_id,
@@ -157,29 +168,65 @@ class get_ztc(object):
             "isAjaxRequest": "true",
             "token": token,
             "_referer": '/report/bpreport/download',
-            "sessionId": "845378f3-7c8f-41e4-8448-c74f4be9c797",
+            "sessionId": sessionId,
         }
         data_encode = urllib.parse.urlencode(item)
         self.get_content(url, data_encode, cookie)
 
-    def ztc_online_download(self, token, cookie):
-        """
-        在线文件下载并获取在线文件数据
-        :param token:
-        :param cookie:
-        :return:
-        """
-        url = 'https://subway.simba.taobao.com/reportdownload/getdownloadTasks.htm?pageSize=100&pageNumber=1'
-        item = {
-            "sla": "json",
-            "isAjaxRequest": "true",
-            "token": token,
-            "_referer": '/report/bpreport/download',
-            "sessionId": "d5450ae8-7332-4dc7-8160-18247caad3c8",
-        }
-        data_encode = urllib.parse.urlencode(item)
-        response = self.get_content(url, data_encode, cookie)
-        custId = 0
-        if response['code']:
-            custId = response['result']['items'][0]['custId']
-        return custId
+    def r_csv(self, br, fn, sn):
+        fn += '.csv'
+        fn = funtion.route_join(br, fn)
+        datas = pd.read_csv(fn)
+        datas['花费'].dropna(inplace=True, axis=0)
+        sum_cost = datas['花费'].sum()
+        datas['店铺'] = sn
+        datas['日期'] = getOneday(1)
+        datas['总花费'] = sum_cost
+        datas['花费汇总'] = sum_cost
+        datas['推广类型'] = 'kc'
+        datas['店铺类型'] = '天猫商城'
+        datas['创建时间'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datas['编码'] = datas['商品id'].apply(lambda x: self.pm.get_sku_code(x))
+        datas = datas[self.columns]
+        datas.rename(columns=dict(zip(self.columns, self.columns_en)))
+        datas.to_excel('./1.xlsx')
+        return datas
+
+    def run(self, sn, s_date, br, fn):
+        fn = fn.strip('.csv')
+        cookie = self.get_cookie(sn)
+        token = self.get_token(cookie)
+        sessionId = '0A0A18A1'
+        cost_money = self.get_cost_money(token, cookie, sessionId, s_date)
+        if cost_money not in (0, -1):
+            nums, taskId, custId = (0, 0, 0)
+            while nums < 3:
+                self.online_download(fn, token, cookie, sessionId, s_date)
+                custId, taskId = self.get_other_info(token, cookie, sessionId, fn)
+                if taskId != '':
+                    break
+                nums += 1
+                time.sleep(30)
+            nums = 0
+            while nums < 3 and taskId:
+                flag_bool = self.dow_file(token, cookie, custId, taskId, br=br)
+                if flag_bool:
+                    break
+                nums += 1
+                time.sleep(30)
+            if taskId:
+                self.del_file(token, cookie, taskId, sessionId)
+        return cost_money
+
+# if __name__ == '__main__':
+#     base_route = './tool'
+#     td = TbkDeal()
+#     dt = '2021-12-05'
+#     user_name = '能良数码官方旗舰店:数据专用'
+#     password = 'sjzy123456'
+#     shop_name = '能良数码官方旗舰店'
+#     flag_type = 2
+#     file_name = '{0}{1}'.format(shop_name, dt, dt)
+#     td.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+#     gz = get_ztc()
+#     gz.run(shop_name, dt, base_route, file_name)

@@ -25,6 +25,8 @@ from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from configparser import ConfigParser
 
+from funtions.pro_fee.ztc import get_ztc
+
 """
 天猫淘宝客账号登陆
 """
@@ -41,6 +43,7 @@ class TbkDeal:
             'x-requested-with': 'XMLHttpRequest',
             'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'
         }
+        self.gz = get_ztc()
         self.connect_pro = create_engine(
             'mysql+pymysql://opera_python:nenglianginfo2021@python@rm-uf698x9pde1ytqxe8ko.mysql.rds.aliyuncs.com:3306/operating-management?charset=utf8mb4')
         self.sql_sku = 'select outer_id from goods_skus_info where num_iid ="%s"'
@@ -163,20 +166,20 @@ class TbkDeal:
             sum_cost = 0
             if flag:
                 sum_cost = self.tbk_content(zeroToday, shop_name, base_route)
-            file_route_dict['淘宝客'] = [self.deal_tbk, self.create_file(base_route, '淘宝客', '{0}.csv'.format(shop_name)),
-                                      sum_cost]
+            file_route = self.create_file(base_route, '淘宝客', '{0}.csv'.format(shop_name))
+            file_route_dict['淘宝客'] = [self.deal_tbk, file_route, sum_cost]
         if flag_type == 0 or flag_type == 2:
             sum_cost = 0
+            file_name = '{0}{1}.csv'.format(shop_name, yesterday_time)
             if flag:
-                sum_cost = self.ztc_content(yesterday_time, shop_name, base_route)
+                self.gz.run(sn=shop_name, s_date=yesterday_time, br=base_route, fn=file_name)
+                # sum_cost = self.ztc_content(yesterday_time, shop_name, base_route)
                 # sum_cost = ztc.get_ztc().ztc_content(yesterday_time, shop_name, base_route)
-            file_route_dict['直通车'] = [self.deal_ztc, self.create_file(base_route, '直通车',
-                                                                      '{0}{1}.csv'.format(shop_name, yesterday_time)),
-                                      sum_cost]
+            file_route = self.create_file(base_route, '直通车', file_name)
+            file_route_dict['直通车'] = [self.deal_ztc, file_route, sum_cost]
         if flag_type == 0 or flag_type == 3:
-            yt = yesterday_time
-            file_route_dict['超级推荐'] = [self.deal_sr, self.create_file(base_route, '超级推荐', '{0}.xlsx'.format(shop_name)),
-                                       yt]
+            file_route = self.create_file(base_route, '超级推荐', '{0}.xlsx'.format(shop_name))
+            file_route_dict['超级推荐'] = [self.deal_sr, file_route, yesterday_time]
 
         new_pd = pd.DataFrame(columns=cols)
         for k, i in file_route_dict.items():
@@ -479,13 +482,13 @@ class TbkDeal:
         if os.path.exists(file_path):
             ''.format(args)
             df = pd.read_csv(file_path)
-            df.rename(columns={'商品id': 'goods_id', '花费(分)': 'money', '总成交金额(分)': 'total_amount', '投入产出比': 'ROI'},
+            df.rename(columns={'商品id': 'goods_id', '花费': 'money', '总成交金额': 'total_amount', '投入产出比': 'ROI'},
                       inplace=True)
             df1 = df.groupby('goods_id').sum().reset_index()[['goods_id', 'money', 'total_amount', 'ROI']]
             df1 = df1[df1.money != 0]
         else:
             df1 = pd.DataFrame(columns=cols)
-        return self.data_format(df1, cost_money, shop_name, cols, 'ztc', mul=100,
+        return self.data_format(df1, cost_money, shop_name, cols, 'ztc', mul=1,
                                 total_amount=np.around(df1.total_amount, 2) / 100, ROI=np.around(df1.ROI, 2))
 
     @staticmethod
@@ -666,53 +669,34 @@ class TbkDeal:
         except Exception as e:
             print(e)
 
-    # @staticmethod
-    # def data_time_cal(data_range=1, start_time=None):
-    #     """
-    #     输入时间范围和结束最近的时间
-    #     :param data_range:
-    #     :param start_time:
-    #     :return:
-    #     """
-    #     time_start = datetime.now()  # 获取当前的日期时间
-    #     time_end = time_start - timedelta(data_range)
-    #     if start_time and isinstance(time_end, datetime):
-    #         time_start = start_time
-    #     else:
-    #         print("请检查输入的时间类型是否正确")
-
     @funtion.add_time
     def get_start(self, sn=None, flag_type=0, flag=True, data_range=1):
         time_start = datetime.now()
-
         time_end = time_start - timedelta(data_range)
         config = ConfigParser()
         config.read("./tm_config.ini", encoding="utf-8")
         sections = config.sections()
         cols = ['goods_id', 'money', 'shop_name', 'sku_type', 'sum_cost', 'total_amount', 'ROI']
         new_pd = pd.DataFrame(columns=cols)
-        # if not sn:
-        # sn = [i for i in sections]
         sn = [[i, config.get(i, 'user_name'), config.get(i, 'password')] for i in sections if not sn or i in sn]
         print([i[0] for i in sn])
         dt = time_start.strftime('%Y-%m-%d')
         for i in sn:
-            # shop_name = i
-            shop_name = i[0]
-            user_name = i[1]
-            password = i[2]
+            shop_name, user_name, password = (i[0], i[1], i[2])
             try:
                 # 数据处理
                 if flag:
-                    self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+                    # self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
                     print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
                 else:
                     print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
+
                 new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
             except BaseException as e:
                 print(e, Fore.LIGHTRED_EX + '{0}:未获取成功'.format(shop_name), Style.RESET_ALL)
         if new_pd.shape[0]:
-            self.del_data(new_pd, time_start)
+            pass
+            # self.del_data(new_pd, time_start)
         else:
             print('今天没有获取推广费')
 
@@ -775,12 +759,12 @@ if __name__ == '__main__':
     #  fg 代表是否使用离线的excel报表,True 为在线文档 False使用本地的Excel
     #  dr 代表获取的日期范围
 
-    ft = 0
-    fg = True
+    ft = 2
+    fg = False
     dr = 1
-    shopname_list = ['头号卖家官方旗舰店_4', '头号卖家官方旗舰店_6']
+    shopname_list = ['能良数码官方旗舰店']
     td = TbkDeal()
-    # td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
+    td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 
     scheduler = BlockingScheduler()
     scheduler.add_job(td.get_start, 'cron', hour=4, minute=10, misfire_grace_time=1000 * 90)

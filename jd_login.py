@@ -385,7 +385,7 @@ def remove_over_data(rt):
 
 @funtion.add_time
 def main_run(flag=True):
-    one_start = ['头号卖家官方旗舰店_4']
+    one_start = ['头号卖家官方旗舰店_2']
     run(flag=flag, shop_name=one_start)
 
 
