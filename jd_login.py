@@ -385,12 +385,12 @@ def remove_over_data(rt):
 
 @funtion.add_time
 def main_run(flag=True):
-    one_start = ['头号卖家官方旗舰店_2']
+    one_start = ['头号卖家官方旗舰店_4']
     run(flag=flag, shop_name=one_start)
 
 
 def test():
-    fn = './tool/2021/7/30/京东.xlsx'
+    fn = './tool/2021/12/24/京东.xlsx'
     c = [['头号卖家官方旗舰店', '王宁', 1, 2, 3, 0]]
     g_sql(fn, c)
 
@@ -400,7 +400,7 @@ if __name__ == '__main__':
     # exit()
     print('程序启动')
     # 单次执行
-    main_run(flag=False)
+    # main_run(flag=False)
     # 定时运行
     bs = BlockingScheduler()
     bs.add_job(main_run, 'cron', hour=3, minute=40, misfire_grace_time=1000 * 90)

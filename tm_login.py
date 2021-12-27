@@ -24,7 +24,7 @@ from sqlalchemy import create_engine
 from datetime import datetime, timedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
 from configparser import ConfigParser
-
+from funtions.pub_methods import pub_method
 from funtions.pro_fee.ztc import get_ztc
 
 """
@@ -49,6 +49,7 @@ class TbkDeal:
         self.sql_sku = 'select outer_id from goods_skus_info where num_iid ="%s"'
         self.get_sku_sql = 'select * from %s where create_date="%s" and  sku_id ="%s" and sku_type="%s" and shop_name="%s"'
         self.save_sql = """insert into {0} {1} VALUES{2}"""
+        self.pm = pub_method()
 
     def get_sku_code(self, good_id):
         """
@@ -148,7 +149,7 @@ class TbkDeal:
             custId = response['result']['items'][0]['custId']
         return custId
 
-    def start(self, shop_name, cols, time_start, time_end, flag_type=0, flag=True):
+    def start(self, shop_name, cols, time_start, time_end, flag_type=0, flag=True,user_name=None, password=None):
         ''.format(time_end)
 
         start_day = time_start - timedelta(hours=time_start.hour, minutes=time_start.minute,
@@ -165,14 +166,18 @@ class TbkDeal:
         if flag_type == 0 or flag_type == 1:
             sum_cost = 0
             if flag:
-                sum_cost = self.tbk_content(zeroToday, shop_name, base_route)
+                try:
+                    sum_cost = self.tbk_content(zeroToday, shop_name, base_route)
+                except BaseException as e:
+                    print('{0}直通车获取失败'.format(shop_name))
+                    ''.format(e)
             file_route = self.create_file(base_route, '淘宝客', '{0}.csv'.format(shop_name))
             file_route_dict['淘宝客'] = [self.deal_tbk, file_route, sum_cost]
         if flag_type == 0 or flag_type == 2:
             sum_cost = 0
             file_name = '{0}{1}.csv'.format(shop_name, yesterday_time)
             if flag:
-                self.gz.run(sn=shop_name, s_date=yesterday_time, br=base_route, fn=file_name)
+                sum_cost = self.gz.run(sn=shop_name, s_date=yesterday_time, br=base_route, fn=file_name,user_name=user_name, password=password)
                 # sum_cost = self.ztc_content(yesterday_time, shop_name, base_route)
                 # sum_cost = ztc.get_ztc().ztc_content(yesterday_time, shop_name, base_route)
             file_route = self.create_file(base_route, '直通车', file_name)
@@ -535,27 +540,29 @@ class TbkDeal:
         return width, height
 
     async def tb_main(self, user_name, password, shop_name, today_dt, flag_type):
-        file_route = './tool/tm_data/{0}'.format(shop_name)
-        funtion.chect_dir(file_route)
-        width, height = await self.screen_size()
+        file_route = './tool/tm_data/{0}/userdata'.format(shop_name)
+        # funtion.chect_dir(file_route)
+        # width, height = await self.screen_size()
         base_url = 'https://www.alimama.com/member/login.htm'
-        browser = await launch(headless=False,
-                               handleSIGINT=False,
-                               handleSIGTERM=False,
-                               handleSIGHUP=False,
-                               userDataDir=funtion.route_join(file_route, 'userdata'),
-                               args=['--disable-infobars',
-                                     '--no-sandbox',
-                                     '--disable-setuid-sandbox''--window-size={0},{1}'.format(width, height)],
-                               dumpio=True)
-        page = await browser.newPage()
+        # browser = await launch(headless=False,
+        #                        handleSIGINT=False,
+        #                        handleSIGTERM=False,
+        #                        handleSIGHUP=False,
+        #                        userDataDir=funtion.route_join(file_route, 'userdata'),
+        #                        args=['--disable-infobars',
+        #                              '--no-sandbox',
+        #                              '--disable-setuid-sandbox',
+        #                              '--window-size={0},{1}'.format(width, height)],
+        #                        dumpio=True)
+        # page = await browser.newPage()
+        page,browser = await self.pm.tb_main(base_url,file_route)
         try:
-            await page.setViewport({'width': width, 'height': height})
-            await page.setJavaScriptEnabled(enabled=True)
-            await page.goto(base_url, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
-            await page.evaluateOnNewDocument(
-                '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
-            await page.evaluate('''() =>{ Object.defineProperties(navigator,{ webdriver:{ get: () => false } }) }''')
+            # await page.setViewport({'width': width, 'height': height})
+            # await page.setJavaScriptEnabled(enabled=True)
+            # await page.goto(base_url, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+            # await page.evaluateOnNewDocument(
+            #     '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
+            # await page.evaluate('''() =>{ Object.defineProperties(navigator,{ webdriver:{ get: () => false } }) }''')
             frame = page.frames[1]  # num为所需要的frame在所有iframe中的编号
             await frame.evaluate('''() =>{ Object.defineProperties(navigator,{ webdriver:{ get: () => false } }) }''')
 
@@ -576,18 +583,19 @@ class TbkDeal:
                     'but_id': None
                 }
             if flag_type == 0 or flag_type == 2:
-                tm_hd_dict['ztc'] = {
-                    'url': 'https://subway.simba.taobao.com/index.jsp',
-                    'cookie_name': 'ztc_cookies.json',
-                    'but_id': '//*[@id="mx_190"]/div/div[2]/div[2]/a'
-                }
+                await self.gz.login_ztc(page, show_url, fr)
+                # tm_hd_dict['ztc'] = {
+                #     # 'url': 'https://subway.simba.taobao.com/index.jsp',
+                #     'url': 'https://subway.simba.taobao.com/#!/report/bpreport/campaign/index',
+                #     'cookie_name': 'ztc_cookies.json',
+                #     'but_id': '//*[@id="mx_190"]/div/div[2]/div[2]/a'
+                # }
             if flag_type == 0 or flag_type == 3:
                 tm_hd_dict['cjzz'] = {
                     'url': 'https://tuijian.taobao.com/indexbp-feedflow.html#!/report/whole/index?alias=all&perspective=report',
                     'cookie_name': 'cjzz_cookies.json',
                     'but_id': '//*[@id="mx_171"]/div/div[2]/div[2]/a'
                 }
-
             for K, v in tm_hd_dict.items():
                 await self.get_cookies(page, fr, v, show_url)
 
@@ -686,32 +694,19 @@ class TbkDeal:
             try:
                 # 数据处理
                 if flag:
-                    # self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+                    self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
                     print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
+                    exit()
                 else:
                     print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
-
-                new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
+                new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag,user_name, password))
             except BaseException as e:
                 print(e, Fore.LIGHTRED_EX + '{0}:未获取成功'.format(shop_name), Style.RESET_ALL)
         if new_pd.shape[0]:
-            pass
-            # self.del_data(new_pd, time_start)
+            self.del_data(new_pd, time_start)
         else:
             print('今天没有获取推广费')
 
-    # def get_datas(self,data,dt,flag_type,cols,time_start,time_end):
-    #     shop_name,user_name,password = *data
-    #     try:
-    #         # 数据处理
-    #         if flag:
-    #             self.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
-    #             print('{0}》'.format(shop_name) + Fore.GREEN + '登录成功', Style.RESET_ALL)
-    #         else:
-    #             print(Fore.GREEN + '使用离线数据', Style.RESET_ALL)
-    #         new_pd = new_pd.append(self.start(shop_name, cols, time_start, time_end, flag_type, flag))
-    #     except BaseException as e:
-    #         print(e, Fore.LIGHTRED_EX + '{0}:未获取成功'.format(shop_name), Style.RESET_ALL)
     def del_data(self, new_pd, time_start):
         new_pd['shop_type'] = '天猫商城'
         new_pd['exp_date'] = (time_start + timedelta(days=-1)).strftime('%Y-%m-%d')
@@ -760,12 +755,12 @@ if __name__ == '__main__':
     #  dr 代表获取的日期范围
 
     ft = 2
-    fg = False
+    fg = True
     dr = 1
     shopname_list = ['能良数码官方旗舰店']
     td = TbkDeal()
     td.get_start(sn=shopname_list, flag_type=ft, flag=fg, data_range=dr)
 
     scheduler = BlockingScheduler()
-    scheduler.add_job(td.get_start, 'cron', hour=4, minute=10, misfire_grace_time=1000 * 90)
+    scheduler.add_job(td.get_start, 'cron', hour=4, minute=10, misfire_grace_time=1000 * 90,timezone='Asia/Shanghai')
     scheduler.start()

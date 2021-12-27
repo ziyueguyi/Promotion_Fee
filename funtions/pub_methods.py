@@ -4,8 +4,12 @@
 # @软件名称  :PyCharm
 # @创建时间  : 2021-10-19 14:27
 # @用户名称  :DELL
+import asyncio
+import random
+
 import pandas as pd
 import requests
+from pyppeteer import launch
 from retrying import retry
 from sqlalchemy import create_engine
 from base_fun import funtion
@@ -64,3 +68,43 @@ class pub_method:
         fn = funtion.route_join(base_route, br_file)
         funtion.chect_dir(fn)
         return funtion.route_join(fn, '{0}'.format(file_name))
+
+    @staticmethod
+    async def screen_size():
+        """使用tkinter获取屏幕大小"""
+        import tkinter
+        tk = tkinter.Tk()
+        width = tk.winfo_screenwidth()
+        height = tk.winfo_screenheight()
+        tk.quit()
+        return width, height
+
+    async def tb_main(self,base_url,file_route):
+        funtion.chect_dir(file_route)
+        width, height = await self.screen_size()
+        browser = await launch(headless=False,
+                               handleSIGINT=False,
+                               handleSIGTERM=False,
+                               handleSIGHUP=False,
+                               userDataDir=file_route,
+                               args=['--disable-infobars',
+                                     '--no-sandbox',
+                                     '--disable-setuid-sandbox',
+                                     '--window-size={0},{1}'.format(width, height)],
+                               dumpio=True)
+        page = await browser.newPage()
+        try:
+            await page.setViewport({'width': width, 'height': height})
+            await page.setJavaScriptEnabled(enabled=True)
+            await page.goto(base_url, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+            await page.evaluateOnNewDocument(
+                '''() =>{ Object.defineProperties(navigator, { webdriver: { get: () => false } }) }''')
+            await page.evaluate('''() =>{ Object.defineProperties(navigator,{ webdriver:{ get: () => false } }) }''')
+            await asyncio.sleep(random.randint(3,6))
+        except BaseException as e:
+            print('{0}访问失败《{1}》'.format(base_url,e))
+            await page.close()
+            await browser.close()
+            exit()
+        finally:
+            return page,browser

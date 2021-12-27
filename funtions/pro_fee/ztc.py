@@ -4,8 +4,10 @@
 # @软件名称  :PyCharm
 # @创建时间  : 2021-10-19 14:24
 # @用户名称  :DELL
+import asyncio
 import math
 import os
+import random
 import time
 import urllib
 import zipfile
@@ -42,6 +44,28 @@ class get_ztc(object):
             'content-type': 'application/x-www-form-urlencoded; charset=UTF-8'
         }
 
+    @staticmethod
+    async def login_ztc(page, show_url, file_route):
+        url_report = 'https://subway.simba.taobao.com/#!/report/bpreport/campaign/index'
+        url_manage_export_reports = 'https://subway.simba.taobao.com/#!/report/bpreport/download-list'
+        cookie_name = 'ztc_cookies.json'
+        try:
+            if page.url != show_url:
+                await page.goto(show_url, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+                await asyncio.sleep(random.randint(2, 6))
+        except BaseException as e:
+            ''.format(e)
+        await page.goto(url_report, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+        await asyncio.sleep(5)
+        await page.goto(url_manage_export_reports, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+        await asyncio.sleep(5)
+        cookies = await page.cookies()
+        await asyncio.sleep(random.randint(1, 5))
+        fr = funtion.route_join(file_route, cookie_name)
+        funtion.save_cookie(cookies, fr)
+        await asyncio.sleep(random.randint(5, 15))
+        # pass
+
     def online_download(self, fn, token, cookie, sessionID, s_date):
         url = "https://subway.simba.taobao.com/reportdownload/addMultiTask.htm"
         datas = {
@@ -68,6 +92,7 @@ class get_ztc(object):
     def get_token(self, cookie):
         url = 'https://subway.simba.taobao.com/bpenv/getLoginUserInfo.htm'
         response = self.get_content(url, None, cookie)
+        print(response)
         token = response['result']['token']
         return token
 
@@ -126,16 +151,24 @@ class get_ztc(object):
             time.sleep(1)
         return custId, taskId
 
-    def dow_file(self, token, cookie, custId, taskId, br):
+    def dow_file(self, token, cookie, custId, taskId, br, user_name, password):
         br = funtion.route_join(br, '直通车')
-        down_rul = 'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.23211836.ce272de26.d5325113b.6f3d68f8Q4CscJ&custId={0}&token={1}&taskId={2}'.format(
+        down_rul = 'https://download-subway.simba.taobao.com/download.do?spm=a2e2i.23211836.ce272de26.d5325113b.67c368f8a2VZNO&custId={0}&token={1}&taskId={2}'.format(
             custId, token, taskId)
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        loop = asyncio.get_event_loop()
+        task = asyncio.ensure_future(self.get_ztc_page(user_name, password))
+        loop.run_until_complete(asyncio.wait([task]))
         try:
+            print(down_rul)
+
             response = self.get_contents(url=down_rul, cookie=cookie)
+
+            # print(response)
         except BaseException as e:
             ''.format(e)
             return
-
         __temp_file = tempfile.TemporaryFile()
         __temp_file.write(response)
         zf = zipfile.ZipFile(__temp_file, mode='r')
@@ -192,11 +225,12 @@ class get_ztc(object):
         datas.to_excel('./1.xlsx')
         return datas
 
-    def run(self, sn, s_date, br, fn):
+    def run(self, sn, s_date, br, fn, user_name, password):
         fn = fn.strip('.csv')
+        print(sn)
         cookie = self.get_cookie(sn)
         token = self.get_token(cookie)
-        sessionId = '0A0A18A1'
+        sessionId = '3742c665-a4f6-45ab-8270-74aab81b6940'
         cost_money = self.get_cost_money(token, cookie, sessionId, s_date)
         if cost_money not in (0, -1):
             nums, taskId, custId = (0, 0, 0)
@@ -209,7 +243,7 @@ class get_ztc(object):
                 time.sleep(30)
             nums = 0
             while nums < 3 and taskId:
-                flag_bool = self.dow_file(token, cookie, custId, taskId, br=br)
+                flag_bool = self.dow_file(token, cookie, custId, taskId, br=br, user_name=user_name, password=password)
                 if flag_bool:
                     break
                 nums += 1
@@ -218,15 +252,45 @@ class get_ztc(object):
                 self.del_file(token, cookie, taskId, sessionId)
         return cost_money
 
-# if __name__ == '__main__':
-#     base_route = './tool'
-#     td = TbkDeal()
-#     dt = '2021-12-05'
-#     user_name = '能良数码官方旗舰店:数据专用'
-#     password = 'sjzy123456'
-#     shop_name = '能良数码官方旗舰店'
-#     flag_type = 2
-#     file_name = '{0}{1}'.format(shop_name, dt, dt)
-#     td.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
-#     gz = get_ztc()
-#     gz.run(shop_name, dt, base_route, file_name)
+    @staticmethod
+    def input_time_random():
+        return random.randint(100, 151)
+
+    async def get_ztc_page(self, user_name, password):
+        base_url = 'https://www.alimama.com/member/login.htm'
+        file_route = './tool/tm_data/{0}/userdata'.format(shop_name)
+        page, browser = await self.pm.tb_main(base_url, file_route)
+        try:
+            frame = page.frames[1]  # num为所需要的frame在所有iframe中的编号
+            await frame.evaluate('''() =>{ Object.defineProperties(navigator,{ webdriver:{ get: () => false } }) }''')
+
+            await frame.type('#fm-login-id', user_name, {'delay': self.input_time_random() - 50})
+            await frame.type('#fm-login-password', password, {'delay': self.input_time_random()})
+            await frame.click('.fm-btn')
+            await asyncio.sleep(5)
+            show_url = 'https://www.alimama.com/index.htm'
+            if page.url != show_url:
+                await asyncio.sleep(60)
+            url_report = 'https://subway.simba.taobao.com/#!/report/bpreport/campaign/index'
+            await page.goto(url_report, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+            url_manage_export_reports = 'https://subway.simba.taobao.com/#!/report/bpreport/download-list'
+            await page.goto(url_manage_export_reports, {'timeout': 10000 * 20, 'waitUntil': 'networkidle0'})
+        except BaseException as e:
+            ''.format(e)
+        finally:
+            await page.close()
+            await browser.close()
+
+
+if __name__ == '__main__':
+    base_route = './tool'
+    # td = TbkDeal()
+    dt = '2021-12-05'
+    user_name = '能良数码官方旗舰店:数据专用'
+    password = 'sjzy123456'
+    shop_name = '能良数码官方旗舰店'
+    flag_type = 2
+    file_name = '{0}{1}'.format(shop_name, dt, dt)
+    # td.get_shop_cookies(user_name, password, shop_name, dt, flag_type)
+    gz = get_ztc()
+    gz.run(shop_name, dt, base_route, file_name, user_name, password)
